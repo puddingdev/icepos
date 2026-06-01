@@ -1,4 +1,8 @@
-# 🍨 IcePOS
+# 🍨 IcePOS — Scoop by Loki
+
+<p align="center">
+  <img src="Loki_Ice.png" width="180" alt="Scoop by Loki" />
+</p>
 
 **A lightweight POS system for a small ice cream delivery shop**  
 สร้างด้วย Vanilla HTML/JS · ข้อมูลเก็บใน Google Sheets · Deploy บน Vercel
