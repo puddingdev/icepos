@@ -518,24 +518,12 @@ function gasOrderToLocal(o){
 async function syncHistoryFromSheets(){
   try{
     const data=await fetch(GAS_URL+'?action=getAll').then(r=>r.json());
-    const oKeys=new Set(S.orders.map(o=>dateKey(o.date)));
-    const pKeys=new Set(S.purchases.map(p=>dateKey(p.date)));
-    let changed=false;
-    (data.orders||[]).forEach(o=>{
-      const k=dateKey(gasDateToISO(o.date));
-      if(!oKeys.has(k)){S.orders.push(gasOrderToLocal(o));oKeys.add(k);changed=true;}
-    });
-    (data.purchases||[]).forEach(p=>{
-      const k=dateKey(gasDateToISO(p.date));
-      if(!pKeys.has(k)){S.purchases.push({type:p.category,name:p.name,qty:+p.qty,price:+p.price,date:gasDateToISO(p.date)});pKeys.add(k);changed=true;}
-    });
-    if(changed){
-      S.orders.sort((a,b)=>new Date(a.date)-new Date(b.date));
-      save();
-      if(el('page-history').classList.contains('on'))renderHistory();
-      if(el('page-summary').classList.contains('on'))renderSummary();
-      toast('🔄 ซิงค์ประวัติแล้ว');
-    }
+    if(!data.orders)return;
+    S.orders=(data.orders||[]).map(gasOrderToLocal).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    S.purchases=(data.purchases||[]).map(p=>({type:p.category,name:p.name,qty:+p.qty,price:+p.price,date:gasDateToISO(p.date)}));
+    save();
+    if(el('page-history').classList.contains('on'))renderHistory();
+    if(el('page-summary').classList.contains('on'))renderSummary();
   }catch(e){console.warn('Sync history failed:',e);}
 }
 syncHistoryFromSheets();
