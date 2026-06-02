@@ -518,6 +518,40 @@ function gasOrderToLocal(o){
   }
   return{type:'sale',date,size:o.size,flavors:(o.flavors||'').split(', ').filter(Boolean),toppings:(o.toppings||'').split(', ').filter(Boolean),price:+o.price,cost:+o.cost,profit:+o.profit};
 }
+function recalcStock(){
+  const ice={},top={},cps={},cpt={};
+  S.iceTypes.forEach(t=>{ice[t.id]=0;cps[t.id]=0;});
+  S.topTypes.forEach(t=>{top[t.id]=0;cpt[t.id]=0;});
+  let invested=0;
+  [...S.purchases].sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(p=>{
+    if(p.type==='ice'){
+      const t=S.iceTypes.find(x=>x.name===p.name);if(!t)return;
+      const cur=ice[t.id]||0,curC=cps[t.id]||0;
+      cps[t.id]=(cur*curC+p.price)/(cur+p.qty||1);
+      ice[t.id]=(ice[t.id]||0)+p.qty;invested+=p.price;
+    }else if(p.type==='top'){
+      const t=S.topTypes.find(x=>x.name===p.name);if(!t)return;
+      const cur=top[t.id]||0,curC=cpt[t.id]||0;
+      cpt[t.id]=(cur*curC+p.price)/(cur+p.qty||1);
+      top[t.id]=(top[t.id]||0)+p.qty;invested+=p.price;
+    }
+  });
+  S.orders.forEach(o=>{
+    if(o.type==='sale'){
+      const sz=S.sizes.find(s=>s.label===o.size||s.id===o.size);
+      const scoops=o.scoops||sz?.scoops||0;
+      const spf=(o.flavors||[]).length>0?Math.round(scoops/(o.flavors||[]).length):0;
+      (o.flavors||[]).forEach(f=>{ice[f]=Math.max(0,(ice[f]||0)-spf);});
+      (o.toppings||[]).forEach(t=>{top[t]=Math.max(0,(top[t]||0)-1);});
+    }else if(o.type==='eat'){
+      Object.entries(o.ice||{}).forEach(([id,n])=>{ice[id]=Math.max(0,(ice[id]||0)-n);});
+      Object.entries(o.top||{}).forEach(([id,n])=>{top[id]=Math.max(0,(top[id]||0)-n);});
+    }
+  });
+  S.stock.ice=ice;S.stock.top=top;
+  S.costPerScoop=cps;S.costPerTop=cpt;
+  S.totalInvested=invested;
+}
 async function syncHistoryFromSheets(){
   try{
     const res=await fetch(GAS_URL+'?action=getAll');
@@ -527,7 +561,6 @@ async function syncHistoryFromSheets(){
     catch(e){console.error('getAll non-JSON:',text.slice(0,300));toast('⚠️ GAS ตอบกลับผิดรูปแบบ');return;}
     if(!data.orders){console.warn('getAll response:',data);toast('⚠️ GAS ไม่มีข้อมูล orders');return;}
 
-    // orders + purchases จาก orders sheet
     S.orders=(data.orders||[]).map(gasOrderToLocal);
     S.purchases=(data.purchases||[]).map(p=>({type:p.category,name:p.name,qty:+p.qty,price:+p.price,date:gasDateToISO(String(p.date||''))}));
 
@@ -544,15 +577,8 @@ async function syncHistoryFromSheets(){
     });
     S.orders.sort((a,b)=>new Date(a.date)-new Date(b.date));
 
-    // restore stock จาก config
-    if(data.config?.stock){
-      const stk=data.config.stock;
-      if(stk.ice)S.stock.ice=stk.ice;
-      if(stk.top)S.stock.top=stk.top;
-      if(stk.costPerScoop)S.costPerScoop=stk.costPerScoop;
-      if(stk.costPerTop)S.costPerTop=stk.costPerTop;
-      if(typeof stk.totalInvested==='number')S.totalInvested=stk.totalInvested;
-    }
+    // คำนวณ stock ใหม่จาก purchases + orders (ไม่ใช้ config snapshot)
+    recalcStock();
 
     // restore PromptPay จาก config
     if(data.config?.promptpay_phone){
