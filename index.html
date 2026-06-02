@@ -223,11 +223,12 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 <!-- SUMMARY -->
 <div id="page-summary" class="page">
   <span class="sec">กำไร / ขาดทุน</span>
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
-    <div class="stat"><div class="stat-v" id="s-revenue">฿0</div><div class="stat-l">รายได้</div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:4px;">
+    <div class="stat"><div class="stat-v" id="s-revenue">฿0</div><div class="stat-l">รายได้รวม</div></div>
     <div class="stat"><div class="stat-v" style="color:var(--muted)" id="s-cost">฿0</div><div class="stat-l">ต้นทุน</div></div>
     <div class="stat"><div class="stat-v" id="s-profit">฿0</div><div class="stat-l">กำไร</div></div>
   </div>
+  <div id="s-rev-breakdown" style="font-size:.72rem;color:var(--muted);text-align:center;margin-bottom:12px;display:none;"></div>
   <div class="card" style="margin-bottom:16px;">
     <div style="display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted);margin-bottom:5px;">
       <span>Margin</span><span id="s-margin" style="font-weight:700;color:var(--text)">0%</span>
@@ -573,7 +574,7 @@ async function syncHistoryFromSheets(){
       const flavors=items.map(it=>S.iceTypes.find(t=>t.name===(it.label||it.flavor||''))?.id).filter(Boolean);
       const sz=S.sizes.find(s=>s.label===(items[0]?.size||'')||s.id===(items[0]?.size||''));
       const toppingIds=tops.map(t=>S.topTypes.find(x=>x.name===(t.label||t.name||''))?.id).filter(Boolean);
-      S.orders.push({type:'sale',size:sz?.label||items[0]?.size||'',flavors,toppings:toppingIds,price:parseFloat(o.subtotal)||0,cost:0,profit:parseFloat(o.subtotal)||0,date:gasDateToISO(String(o.created_at||'')),order_no:o.order_no});
+      S.orders.push({type:'sale',size:sz?.label||items[0]?.size||'',flavors,toppings:toppingIds,price:parseFloat(o.subtotal)||0,cost:0,profit:parseFloat(o.subtotal)||0,date:gasDateToISO(String(o.created_at||'')),order_no:o.order_no,delivery_fee:parseFloat(o.delivery_fee)||0});
     });
     S.orders.sort((a,b)=>new Date(a.date)-new Date(b.date));
 
@@ -1074,7 +1075,8 @@ function renderHistory(){
     } else {
       const tops=o.toppings.map(t=>S.topTypes.find(x=>x.id===t)?.name||t).join(', ');
       const flavs=o.flavors.map(f=>S.iceTypes.find(t=>t.id===f)?.name||f).join(' + ');
-      row.innerHTML=`<div><div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">${ds}</div><div style="font-size:.82rem"><span class="badge" style="background:var(--brown-d);color:white">${o.size}</span>${flavs}${tops?' · <span style="color:var(--muted)">'+tops+'</span>':''}</div></div><div style="text-align:right;flex-shrink:0;margin-left:12px"><div style="font-size:.92rem;font-weight:700">฿${o.price}</div><div style="font-size:.72rem;color:var(--green)">+฿${o.profit}</div></div>`;
+      const dlv=o.delivery_fee>0?`<div style="font-size:.68rem;color:var(--muted)">+฿${o.delivery_fee} ส่ง</div>`:'';
+      row.innerHTML=`<div><div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">${ds}</div><div style="font-size:.82rem"><span class="badge" style="background:var(--brown-d);color:white">${o.size}</span>${flavs}${tops?' · <span style="color:var(--muted)">'+tops+'</span>':''}</div></div><div style="text-align:right;flex-shrink:0;margin-left:12px"><div style="font-size:.92rem;font-weight:700">฿${o.price}</div>${dlv}<div style="font-size:.72rem;color:var(--green)">+฿${o.profit+(o.delivery_fee||0)}</div></div>`;
     }
     wrap.appendChild(row);
   });
@@ -1129,9 +1131,11 @@ el('btn-export').onclick=function(){
 // ============================================================
 function renderSummary(){
   const sales=S.orders.filter(o=>o.type==='sale');
-  const rev=sales.reduce((a,o)=>a+o.price,0);
+  const productRev=sales.reduce((a,o)=>a+o.price,0);
+  const deliveryRev=sales.reduce((a,o)=>a+(o.delivery_fee||0),0);
+  const rev=productRev+deliveryRev;
   const cost=sales.reduce((a,o)=>a+o.cost,0);
-  const profit=sales.reduce((a,o)=>a+o.profit,0);
+  const profit=sales.reduce((a,o)=>a+o.profit,0)+deliveryRev;
   const margin=rev>0?Math.round(profit/rev*100):0;
   const inv=S.totalInvested;
   const recPct=inv>0?Math.min(100,Math.round(profit/inv*100)):0;
@@ -1140,6 +1144,8 @@ function renderSummary(){
   const dailyAvg=Math.round(profit/days);
 
   el('s-revenue').textContent='฿'+rev.toLocaleString();
+  if(deliveryRev>0){el('s-rev-breakdown').textContent='จากขาย ฿'+productRev.toLocaleString()+' · ค่าส่ง ฿'+deliveryRev.toLocaleString();el('s-rev-breakdown').style.display='block';}
+  else{el('s-rev-breakdown').style.display='none';}
   el('s-cost').textContent='฿'+cost.toLocaleString();
   el('s-profit').textContent='฿'+profit.toLocaleString();
   el('s-profit').style.color=profit>=0?'var(--green)':'var(--red)';
@@ -1355,7 +1361,8 @@ function localConfirmOnlineOrder(o){
   const profit=Math.round(price-cost);
   const _d=o.created_at?new Date(o.created_at.replace(' ','T')).toISOString():new Date().toISOString();
 
-  S.orders.push({type:'sale',size:sz?.label||sizeId,scoops:sz?.scoops||0,flavors,toppings:toppingIds,price,cost:Math.round(cost),profit,date:_d,order_no:o.order_no});
+  const delivery_fee=parseFloat(o.delivery_fee)||0;
+  S.orders.push({type:'sale',size:sz?.label||sizeId,scoops:sz?.scoops||0,flavors,toppings:toppingIds,price,cost:Math.round(cost),profit,date:_d,order_no:o.order_no,delivery_fee});
   save();
   syncToSheets({type:'sale',date:_d,size:sz?.label||sizeId,flavors,toppings:toppingIds,price,cost:Math.round(cost),profit});
   syncStockToSheets();
