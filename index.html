@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="Loki_Ice.png">
 <meta name="theme-color" content="#7C3AED">
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-<script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js" onerror="this.onerror=null;var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js';document.head.appendChild(s);"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--cream:#F5F3FF;--warm:#EDE9FE;--border:#DDD6FE;--brown:#7C3AED;--brown-l:#A78BFA;--brown-d:#5B21B6;--text:#1E1B2E;--muted:#7C6F9F;--green:#059669;--red:#DC2626;--card:#ffffff;}
@@ -391,7 +391,7 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
       <div class="card">
         <div style="font-size:.82rem;font-weight:700;color:var(--brown-d);margin-bottom:10px;">💳 QR PromptPay</div>
         <div class="qr-wrap">
-          <canvas id="qr-canvas" style="border-radius:8px;"></canvas>
+          <div id="qr-canvas-wrap" style="border-radius:8px;overflow:hidden;display:inline-block;"></div>
           <div style="font-size:.75rem;color:var(--muted);margin-top:6px;" id="qr-amount-label"></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
@@ -1161,7 +1161,7 @@ function renderOrderDetail(o){
       setTimeout(()=>genQRCanvas(ph,parseFloat(o.total)||0),50);
     }else{
       el('qr-amount-label').innerHTML='⚠️ ยังไม่ได้ตั้งค่าเบอร์ PromptPay<br><span style="font-size:.68rem">ไปตั้งค่าที่ด้านบนหน้า "ออเดอร์" ก่อน</span>';
-      const canvas=el('qr-canvas');if(canvas){canvas.width=0;canvas.height=0;}
+      const wrap=el('qr-canvas-wrap');if(wrap)wrap.innerHTML='';
     }
   }
 
@@ -1243,24 +1243,26 @@ function genPromptPayPayload(phone,amount){
 }
 
 function genQRCanvas(phone,amount){
-  const canvas=el('qr-canvas');if(!canvas)return;
-  const payload=genPromptPayPayload(phone,amount);
+  const wrap=el('qr-canvas-wrap');if(!wrap)return;
+  wrap.innerHTML='';
   if(typeof QRCode==='undefined'){
     el('qr-amount-label').textContent='⚠️ โหลด QR library ไม่ได้ กรุณา refresh';
     return;
   }
-  QRCode.toCanvas(canvas,payload,{width:200,margin:2,color:{dark:'#000000',light:'#ffffff'}},err=>{
-    if(err){console.error('QR gen error:',err);el('qr-amount-label').textContent='⚠️ สร้าง QR ไม่ได้: '+err.message;}
-  });
+  try{
+    const payload=genPromptPayPayload(phone,amount);
+    new QRCode(wrap,{text:payload,width:200,height:200,colorDark:'#000000',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
+  }catch(e){console.error('QR gen error:',e);el('qr-amount-label').textContent='⚠️ สร้าง QR ไม่ได้';}
 }
 
+function getQRCanvas(){return el('qr-canvas-wrap')?.querySelector('canvas');}
 el('btn-qr-copy').onclick=async function(){
-  const canvas=el('qr-canvas');if(!canvas)return;
+  const canvas=getQRCanvas();if(!canvas){toast('⚠️ QR ยังไม่ได้สร้าง');return;}
   try{canvas.toBlob(async blob=>{await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);toast('✓ Copy รูป QR แล้ว!');});}
   catch(e){toast('⚠️ Copy ไม่ได้ กด Download แทน');}
 };
 el('btn-qr-download').onclick=function(){
-  const canvas=el('qr-canvas');if(!canvas)return;
+  const canvas=getQRCanvas();if(!canvas){toast('⚠️ QR ยังไม่ได้สร้าง');return;}
   const a=document.createElement('a');a.download='qr-'+(OL_current?.order_no||'promptpay')+'.png';a.href=canvas.toDataURL();a.click();
 };
 
