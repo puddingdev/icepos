@@ -503,6 +503,9 @@ async function syncToSheets(payload){
   try{await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'log',payload})});}
   catch(e){console.warn('Sync failed:',e);}
 }
+function syncStockToSheets(){
+  syncToSheets({type:'config',key:'stock',value:JSON.stringify({ice:S.stock.ice,top:S.stock.top,costPerScoop:S.costPerScoop,costPerTop:S.costPerTop,totalInvested:S.totalInvested})});
+}
 function gasDateToISO(s){const str=String(s||'');if(str.includes('T')||str.includes('Z'))return new Date(str).toISOString();return new Date(str.replace(' ','T')+'+07:00').toISOString();}
 function dateKey(d){return new Date(d).toISOString().slice(0,19);}
 function gasOrderToLocal(o){
@@ -523,12 +526,48 @@ async function syncHistoryFromSheets(){
     try{data=JSON.parse(text);}
     catch(e){console.error('getAll non-JSON:',text.slice(0,300));toast('⚠️ GAS ตอบกลับผิดรูปแบบ');return;}
     if(!data.orders){console.warn('getAll response:',data);toast('⚠️ GAS ไม่มีข้อมูล orders');return;}
-    S.orders=(data.orders||[]).map(gasOrderToLocal).sort((a,b)=>new Date(a.date)-new Date(b.date));
-    S.purchases=(data.purchases||[]).map(p=>({type:p.category,name:p.name,qty:+p.qty,price:+p.price,date:gasDateToISO(p.date)}));
+
+    // orders + purchases จาก orders sheet
+    S.orders=(data.orders||[]).map(gasOrderToLocal);
+    S.purchases=(data.purchases||[]).map(p=>({type:p.category,name:p.name,qty:+p.qty,price:+p.price,date:gasDateToISO(String(p.date||''))}));
+
+    // merge PAID online orders ที่ยังไม่มีใน orders sheet
+    const olRes=await fetch(GAS_URL+'?action=getOrders').then(r=>r.json()).catch(()=>({orders:[]}));
+    const knownNos=new Set(S.orders.filter(o=>o.order_no).map(o=>o.order_no));
+    (olRes.orders||[]).filter(o=>o.payment_status==='PAID'&&!knownNos.has(o.order_no)).forEach(o=>{
+      const items=Array.isArray(o.items)?o.items:(typeof o.items==='string'?JSON.parse(o.items):[]);
+      const tops=Array.isArray(o.toppings)?o.toppings:(typeof o.toppings==='string'?JSON.parse(o.toppings):[]);
+      const flavors=items.map(it=>S.iceTypes.find(t=>t.name===(it.label||it.flavor||''))?.id).filter(Boolean);
+      const sz=S.sizes.find(s=>s.label===(items[0]?.size||'')||s.id===(items[0]?.size||''));
+      const toppingIds=tops.map(t=>S.topTypes.find(x=>x.name===(t.label||t.name||''))?.id).filter(Boolean);
+      S.orders.push({type:'sale',size:sz?.label||items[0]?.size||'',flavors,toppings:toppingIds,price:parseFloat(o.subtotal)||0,cost:0,profit:parseFloat(o.subtotal)||0,date:gasDateToISO(String(o.created_at||'')),order_no:o.order_no});
+    });
+    S.orders.sort((a,b)=>new Date(a.date)-new Date(b.date));
+
+    // restore stock จาก config
+    if(data.config?.stock){
+      const stk=data.config.stock;
+      if(stk.ice)S.stock.ice=stk.ice;
+      if(stk.top)S.stock.top=stk.top;
+      if(stk.costPerScoop)S.costPerScoop=stk.costPerScoop;
+      if(stk.costPerTop)S.costPerTop=stk.costPerTop;
+      if(typeof stk.totalInvested==='number')S.totalInvested=stk.totalInvested;
+    }
+
+    // restore PromptPay จาก config
+    if(data.config?.promptpay_phone){
+      const ph=String(data.config.promptpay_phone);
+      lsS(PP_KEY,ph);
+      el('inp-pp-phone').value=ph;
+      el('pp-saved-label').textContent='PromptPay: '+ph;
+      el('pp-saved-label').style.display='block';
+    }
+
     save();
     renderHistory();
     if(el('page-summary').classList.contains('on'))renderSummary();
-  }catch(e){console.error('Sync history failed:',e);toast('⚠️ โหลดประวัติไม่ได้: '+e.message.slice(0,40));}
+    if(el('page-stock').classList.contains('on')){renderStock();populateStockSelects();}
+  }catch(e){console.error('Sync failed:',e);toast('⚠️ โหลดข้อมูลไม่ได้: '+e.message.slice(0,40));}
 }
 syncHistoryFromSheets();
 
@@ -832,7 +871,7 @@ el('btn-confirm').onclick=function(){
   O.toppings.forEach(t=>{S.stock.top[t]=Math.max(0,(S.stock.top[t]||0)-1);});
   const _d=new Date().toISOString();
   S.orders.push({type:'sale',size:sz.label,scoops:sz.scoops,flavors:[...O.flavors],toppings:[...O.toppings],price:O._price,cost:O._cost,profit:O._profit,date:_d});
-  save();syncToSheets({type:'sale',date:_d,size:sz.label,flavors:[...O.flavors],toppings:[...O.toppings],price:O._price,cost:O._cost,profit:O._profit});
+  save();syncToSheets({type:'sale',date:_d,size:sz.label,flavors:[...O.flavors],toppings:[...O.toppings],price:O._price,cost:O._cost,profit:O._profit});syncStockToSheets();
   toast('✓ ฿'+O._price+' · กำไร ~฿'+O._profit);
   O={sizeId:null,flavors:[],toppings:[]};
   renderSizeGrid();
@@ -900,7 +939,7 @@ el('btn-confirm-eat').onclick=function(){
   if(!any){toast('ยังไม่ได้ใส่จำนวนเลย 😅');return;}
   const _d=new Date().toISOString();
   S.orders.push({type:'eat',ice,top,date:_d});
-  save();syncToSheets({type:'eat',date:_d,ice,top});hideOv('ov-eat');renderSellAlert();renderHistory();renderSummary();toast('😋 หักสต็อกแล้ว อร่อยนะ!');
+  save();syncToSheets({type:'eat',date:_d,ice,top});syncStockToSheets();hideOv('ov-eat');renderSellAlert();renderHistory();renderSummary();toast('😋 หักสต็อกแล้ว อร่อยนะ!');
 };
 
 // ============================================================
@@ -956,7 +995,7 @@ el('btn-add-ice').onclick=function(){
   S.totalInvested+=price;
   const _n=S.iceTypes.find(t=>t.id===f)?.name;
   S.purchases.push({type:'ice',name:_n,qty:sc,price,date:new Date().toISOString()});
-  save();syncToSheets({type:'purchase',date:new Date().toISOString(),category:'ice',name:_n,qty:sc,unit:'สกู๊ป',price,costPerUnit:parseFloat((price/sc).toFixed(4))});renderStock();
+  save();syncToSheets({type:'purchase',date:new Date().toISOString(),category:'ice',name:_n,qty:sc,unit:'สกู๊ป',price,costPerUnit:parseFloat((price/sc).toFixed(4))});syncStockToSheets();renderStock();
   el('add-ice-kg').value='4';el('add-ice-price').value='';el('ice-preview').textContent='';
   toast('✓ เพิ่ม '+sc+' สกู๊ป');
 };
@@ -978,7 +1017,7 @@ el('btn-add-top').onclick=function(){
   S.totalInvested+=price;
   const _n=S.topTypes.find(t=>t.id===k)?.name;
   S.purchases.push({type:'top',name:_n,qty:serves,price,date:new Date().toISOString()});
-  save();syncToSheets({type:'purchase',date:new Date().toISOString(),category:'top',name:_n,qty:serves,unit:'เสิร์ฟ',price,costPerUnit:parseFloat((price/serves).toFixed(4))});renderStock();
+  save();syncToSheets({type:'purchase',date:new Date().toISOString(),category:'top',name:_n,qty:serves,unit:'เสิร์ฟ',price,costPerUnit:parseFloat((price/serves).toFixed(4))});syncStockToSheets();renderStock();
   el('add-top-price').value='';el('add-top-serves').value='';el('top-preview').textContent='';
   toast('✓ เพิ่ม '+serves+' เสิร์ฟ');
 };
@@ -1118,6 +1157,7 @@ el('btn-pp-save').onclick=function(){
   const ph=(el('inp-pp-phone').value||'').replace(/[^0-9]/g,'');
   if(ph.length<9){toast('⚠️ เบอร์ไม่ถูกต้อง');return;}
   lsS(PP_KEY,ph);
+  syncToSheets({type:'config',key:'promptpay_phone',value:ph});
   el('pp-saved-label').textContent='บันทึกแล้ว: '+ph;el('pp-saved-label').style.display='block';
   toast('✓ บันทึก PromptPay '+ph);
 };
@@ -1292,6 +1332,7 @@ function localConfirmOnlineOrder(o){
   S.orders.push({type:'sale',size:sz?.label||sizeId,scoops:sz?.scoops||0,flavors,toppings:toppingIds,price,cost:Math.round(cost),profit,date:_d,order_no:o.order_no});
   save();
   syncToSheets({type:'sale',date:_d,size:sz?.label||sizeId,flavors,toppings:toppingIds,price,cost:Math.round(cost),profit});
+  syncStockToSheets();
   renderHistory();renderSummary();renderStock();
 }
 
