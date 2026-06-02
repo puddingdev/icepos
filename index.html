@@ -518,13 +518,13 @@ function gasOrderToLocal(o){
 async function syncHistoryFromSheets(){
   try{
     const data=await fetch(GAS_URL+'?action=getAll').then(r=>r.json());
-    if(!data.orders)return;
+    if(!data.orders){console.warn('getAll: no orders field',data);return;}
     S.orders=(data.orders||[]).map(gasOrderToLocal).sort((a,b)=>new Date(a.date)-new Date(b.date));
     S.purchases=(data.purchases||[]).map(p=>({type:p.category,name:p.name,qty:+p.qty,price:+p.price,date:gasDateToISO(p.date)}));
     save();
-    if(el('page-history').classList.contains('on'))renderHistory();
+    renderHistory();
     if(el('page-summary').classList.contains('on'))renderSummary();
-  }catch(e){console.warn('Sync history failed:',e);}
+  }catch(e){console.warn('Sync history failed:',e);toast('⚠️ โหลดประวัติไม่ได้');}
 }
 syncHistoryFromSheets();
 
@@ -559,7 +559,7 @@ el('nav-tabs').addEventListener('click',e=>{
   el('page-'+page).classList.add('on');
   if(page==='sell'){renderSizeGrid();renderSellAlert();}
   if(page==='stock'){renderStock();populateStockSelects();}
-  if(page==='history')renderHistory();
+  if(page==='history'){renderHistory();syncHistoryFromSheets();}
   if(page==='summary')renderSummary();
   if(page==='online')loadOnlineOrders();
 });
