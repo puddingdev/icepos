@@ -469,8 +469,8 @@ function toggleTheme(){const t=document.documentElement.getAttribute('data-theme
 function defState(){
   return {
     sizes:[
-      {id:'M',label:'M',scoops:5,price:49,maxFlavor:1,freeTops:0},
-      {id:'L',label:'L',scoops:8,price:79,maxFlavor:2,freeTops:1}
+      {id:'M',label:'M',scoops:5,price:50,maxFlavor:1,freeTops:0},
+      {id:'L',label:'L',scoops:8,price:75,maxFlavor:2,freeTops:1}
     ],
     iceTypes:[
       {id:'chocolate',name:'ช็อกโกแลต',e:'🍫'},
@@ -495,6 +495,8 @@ let S;
 try{S=JSON.parse(lsG('icepos_v4')||'null')||defState();}catch(e){S=defState();}
 S.iceTypes.forEach(t=>{if(S.stock.ice[t.id]==null)S.stock.ice[t.id]=0;if(S.costPerScoop[t.id]==null)S.costPerScoop[t.id]=0;});
 S.topTypes.forEach(t=>{if(S.stock.top[t.id]==null)S.stock.top[t.id]=0;if(S.costPerTop[t.id]==null)S.costPerTop[t.id]=0;});
+// price migration: fix old wrong defaults
+(function(){let fix=false;S.sizes.forEach(sz=>{if(sz.id==='M'&&sz.price===49){sz.price=50;fix=true;}if(sz.id==='L'&&sz.price===79){sz.price=75;fix=true;}});if(fix)lsS('icepos_v4',JSON.stringify(S));})();
 const save=()=>lsS('icepos_v4',JSON.stringify(S));
 const GAS_URL='https://script.google.com/macros/s/AKfycbwolgQGSX47gYFK2biDG3a2j6jV93_cSALtu7V72Ju-5nKS2C9cl1rO36ZZaIlX5aEyLg/exec';
 async function syncToSheets(payload){
@@ -1267,7 +1269,7 @@ function initCreateOrder(){
 
   // Reset zone buttons
   const zb=el('co-zone-btns');zb.innerHTML='';
-  [{fee:5,label:'5฿ — พฤกษา 116'},{fee:15,label:'15฿ — ซ.มาลี, ตะวันออก 14-16, นำรงค์, เศรษฐบุตร, Fullhouse, ซ.ซูม, เจริญสุข, สะพานชมพู'},{fee:20,label:'20฿ — พร 3, พร 4, พรทวี, โฟร์บี, Maple, หมูน้ำแข็ง, R.S., Icon, ซ.อีส, Kave'}].forEach(z=>{
+  [{fee:5,label:'5฿ — พฤกษา 116'},{fee:15,label:'15฿ — มาลี, ตะวันออก 14-16, นำรงค์, เศรษฐบุตร, Full House, ซูม, เจริญสุข, สะพานชมพู'},{fee:20,label:'20฿ — พร 3, พร 4, พรทวี, Maple, R.S., Icon, Kave, อีส, หมูน้ำแข็ง, โฟร์บี'}].forEach(z=>{
     const b=document.createElement('button');b.className='chip';b.style.cssText='text-align:left;width:100%;white-space:normal;height:auto;padding:10px 16px;';
     b.textContent=z.label;
     b.onclick=()=>{CO.deliveryFee=z.fee;document.querySelectorAll('#co-zone-btns .chip').forEach(x=>x.classList.remove('on'));b.classList.add('on');updateCOSummary();};
