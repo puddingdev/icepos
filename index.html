@@ -583,7 +583,7 @@ async function syncHistoryFromSheets(){
 
     // restore PromptPay จาก config
     if(data.config?.promptpay_phone){
-      const ph=String(data.config.promptpay_phone);
+      const ph=String(data.config.promptpay_phone).replace(/\D/g,'').padStart(10,'0');
       lsS(PP_KEY,ph);
       el('inp-pp-phone').value=ph;
       el('pp-saved-label').textContent='PromptPay: '+ph;
@@ -1189,7 +1189,7 @@ el('btn-pp-save').onclick=function(){
   const ph=(el('inp-pp-phone').value||'').replace(/[^0-9]/g,'');
   if(ph.length<9){toast('⚠️ เบอร์ไม่ถูกต้อง');return;}
   lsS(PP_KEY,ph);
-  syncToSheets({type:'config',key:'promptpay_phone',value:ph});
+  syncToSheets({type:'config',key:'promptpay_phone',value:JSON.stringify(ph)});
   el('pp-saved-label').textContent='บันทึกแล้ว: '+ph;el('pp-saved-label').style.display='block';
   toast('✓ บันทึก PromptPay '+ph);
 };
