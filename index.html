@@ -503,7 +503,7 @@ async function syncToSheets(payload){
   try{await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'log',payload})});}
   catch(e){console.warn('Sync failed:',e);}
 }
-function gasDateToISO(s){return new Date(s.replace(' ','T')+'+07:00').toISOString();}
+function gasDateToISO(s){const str=String(s||'');if(str.includes('T')||str.includes('Z'))return new Date(str).toISOString();return new Date(str.replace(' ','T')+'+07:00').toISOString();}
 function dateKey(d){return new Date(d).toISOString().slice(0,19);}
 function gasOrderToLocal(o){
   const date=gasDateToISO(o.date);
