@@ -517,14 +517,18 @@ function gasOrderToLocal(o){
 }
 async function syncHistoryFromSheets(){
   try{
-    const data=await fetch(GAS_URL+'?action=getAll').then(r=>r.json());
-    if(!data.orders){console.warn('getAll: no orders field',data);return;}
+    const res=await fetch(GAS_URL+'?action=getAll');
+    const text=await res.text();
+    let data;
+    try{data=JSON.parse(text);}
+    catch(e){console.error('getAll non-JSON:',text.slice(0,300));toast('⚠️ GAS ตอบกลับผิดรูปแบบ');return;}
+    if(!data.orders){console.warn('getAll response:',data);toast('⚠️ GAS ไม่มีข้อมูล orders');return;}
     S.orders=(data.orders||[]).map(gasOrderToLocal).sort((a,b)=>new Date(a.date)-new Date(b.date));
     S.purchases=(data.purchases||[]).map(p=>({type:p.category,name:p.name,qty:+p.qty,price:+p.price,date:gasDateToISO(p.date)}));
     save();
     renderHistory();
     if(el('page-summary').classList.contains('on'))renderSummary();
-  }catch(e){console.warn('Sync history failed:',e);toast('⚠️ โหลดประวัติไม่ได้');}
+  }catch(e){console.error('Sync history failed:',e);toast('⚠️ โหลดประวัติไม่ได้: '+e.message.slice(0,40));}
 }
 syncHistoryFromSheets();
 
