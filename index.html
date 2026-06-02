@@ -506,7 +506,7 @@ async function syncToSheets(payload){
 function syncStockToSheets(){
   syncToSheets({type:'config',key:'stock',value:JSON.stringify({ice:S.stock.ice,top:S.stock.top,costPerScoop:S.costPerScoop,costPerTop:S.costPerTop,totalInvested:S.totalInvested})});
 }
-function gasDateToISO(s){const str=String(s||'');if(str.includes('T')||str.includes('Z'))return new Date(str).toISOString();return new Date(str.replace(' ','T')+'+07:00').toISOString();}
+function gasDateToISO(s){const str=String(s||'');if(!str||str==='null'||str==='undefined')return new Date().toISOString();if(str.includes('T')||str.includes('Z'))return new Date(str).toISOString();return new Date(str.replace(' ','T')+'+07:00').toISOString();}
 function dateKey(d){return new Date(d).toISOString().slice(0,19);}
 function gasOrderToLocal(o){
   const date=gasDateToISO(o.date);
