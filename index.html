@@ -1298,6 +1298,7 @@ el('btn-co-submit').onclick=async function(){
   const name=(el('co-name').value||'').trim(),phone=(el('co-phone').value||'').trim(),address=(el('co-address').value||'').trim(),note=(el('co-note').value||'').trim();
   if(!name||!address){toast('⚠️ ใส่ชื่อและที่อยู่ด้วย');return;}
   const sz=S.sizes.find(s=>s.id===O.sizeId);
+  if(!sz){toast('⚠️ กลับไปเลือกขนาดก่อน');return;}
   const free=sz.freeTops||0;
   const sub=O._price||0,tot=sub+CO.deliveryFee;
   const items=O.flavors.map(fid=>{const f=S.iceTypes.find(x=>x.id===fid);return{flavor:f?f.name:fid,size:sz.label,qty:1,unit_price:sz.price};});
@@ -1305,11 +1306,19 @@ el('btn-co-submit').onclick=async function(){
   const payload={customer_name:name,phone,address,note,source:CO.source,items,toppings,subtotal:sub,delivery_fee:CO.deliveryFee,total:tot};
   const btn=el('btn-co-submit');btn.disabled=true;btn.textContent='กำลังสร้าง...';
   try{
-    const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'createOrder',payload})});
+    const r=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'createOrder',payload})});
     const d=await r.json();
-    if(d.success){hideOv('ov-create-order');toast('✓ สร้างออเดอร์ '+d.order_no+' แล้ว');}
-    else toast('⚠️ '+(d.error||'ไม่สำเร็จ'));
-  }catch(e){toast('⚠️ เชื่อมต่อไม่ได้');}
+    if(d.success){
+      hideOv('ov-create-order');
+      toast('✓ สร้างออเดอร์ '+d.order_no+' แล้ว');
+      loadOnlineOrders();
+    } else {
+      toast('⚠️ GAS: '+(d.error||JSON.stringify(d)));
+    }
+  }catch(e){
+    console.error('createOrder error:',e);
+    toast('⚠️ '+(e.message||'เชื่อมต่อไม่ได้'));
+  }
   finally{btn.disabled=false;btn.textContent='✓ สร้างออเดอร์';}
 };
 
