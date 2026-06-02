@@ -8,6 +8,7 @@
 <link rel="apple-touch-icon" href="Loki_Ice.png">
 <meta name="theme-color" content="#7C3AED">
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--cream:#F5F3FF;--warm:#EDE9FE;--border:#DDD6FE;--brown:#7C3AED;--brown-l:#A78BFA;--brown-d:#5B21B6;--text:#1E1B2E;--muted:#7C6F9F;--green:#059669;--red:#DC2626;--card:#ffffff;}
@@ -18,7 +19,7 @@ body{font-family:'Noto Sans Thai',sans-serif;background:var(--cream);color:var(-
 .nav{background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50;}
 .nav-in{max-width:480px;margin:0 auto;padding:0 16px;display:flex;align-items:center;justify-content:space-between;height:52px;}
 .logo{font-size:.95rem;font-weight:700;color:var(--brown-d);}
-.tabs{display:flex;}
+.tabs{display:flex;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;}.tabs::-webkit-scrollbar{display:none;}
 .tab{padding:0 12px;height:52px;display:flex;align-items:center;font-size:.8rem;font-weight:500;color:var(--muted);border:none;border-bottom:2px solid transparent;cursor:pointer;background:none;font-family:inherit;transition:all .15s;}
 .tab.on{color:var(--brown-d);border-bottom-color:var(--brown);font-weight:700;}
 /* PAGES */
@@ -91,6 +92,20 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 .float-eat{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--card);border:2px solid var(--border);border-radius:99px;padding:10px 24px;font-size:.82rem;font-weight:600;color:var(--muted);font-family:inherit;cursor:pointer;box-shadow:0 4px 20px #0000001a;z-index:40;}
 .float-eat:hover{border-color:var(--brown-l);color:var(--brown-d);}
 .divider{height:1px;background:var(--warm);margin:12px 0;}
+/* ONLINE ORDERS */
+.o-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;cursor:pointer;transition:border-color .15s;}
+.o-card:active{transform:scale(.98);}
+.o-card:hover{border-color:var(--brown-l);}
+.sbadge{display:inline-block;padding:3px 10px;border-radius:99px;font-size:.68rem;font-weight:700;letter-spacing:.04em;}
+.s-wait{background:#fef3c7;color:#92400e;}.s-wpay{background:#dbeafe;color:#1e40af;}.s-paid{background:#d1fae5;color:#065f46;}
+.s-making{background:#ede9fe;color:#5b21b6;}.s-ready{background:#e0e7ff;color:#3730a3;}
+.s-dlv{background:#bfdbfe;color:#1d4ed8;}.s-done{background:#d1fae5;color:#065f46;}.s-cancel{background:#fee2e2;color:#991b1b;}
+.filter-bar{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;margin-bottom:14px;}
+.filter-bar::-webkit-scrollbar{display:none;}
+.f-btn{padding:5px 14px;border-radius:99px;border:2px solid var(--border);font-size:.72rem;font-weight:600;font-family:inherit;background:var(--card);color:var(--muted);cursor:pointer;white-space:nowrap;flex-shrink:0;}
+.f-btn.on{background:var(--brown-d);border-color:var(--brown-d);color:white;}
+.msg-box{background:var(--warm);border-radius:10px;padding:12px;font-size:.8rem;line-height:1.7;white-space:pre-wrap;margin-bottom:10px;font-family:inherit;color:var(--text);}
+.qr-wrap{display:flex;flex-direction:column;align-items:center;padding:10px 0;}
 </style>
 </head>
 <body>
@@ -103,6 +118,7 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
       <button class="tab" data-page="stock">สต็อก</button>
       <button class="tab" data-page="history">ประวัติ</button>
       <button class="tab" data-page="summary">สรุป</button>
+      <button class="tab" data-page="online">ออเดอร์</button>
     </div>
     <button id="btn-theme" onclick="toggleTheme()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;padding:4px 6px;line-height:1;">🌙</button>
   </div>
@@ -261,6 +277,38 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
   <div class="card" id="s-recommend"></div>
 </div>
 
+<!-- ONLINE ORDERS -->
+<div id="page-online" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <span class="sec" style="margin:0">Online Orders <span id="ol-count" style="font-weight:400;font-size:.7rem;"></span></span>
+    <div style="display:flex;gap:6px;">
+      <button class="btn-sm" id="btn-ol-refresh">🔄 รีเฟรช</button>
+      <button class="btn-sm" id="btn-ol-create">+ สร้างออเดอร์</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px;">
+    <div style="font-size:.82rem;font-weight:700;color:var(--brown-d);margin-bottom:8px;">⚙️ PromptPay</div>
+    <div style="display:flex;gap:8px;align-items:flex-end;">
+      <div style="flex:1;"><label class="lbl">เบอร์ PromptPay ของร้าน</label><input type="tel" id="inp-pp-phone" class="inp" placeholder="0812345678" maxlength="10"></div>
+      <button class="btn btn-brown" id="btn-pp-save" style="width:auto;padding:10px 16px;font-size:.82rem;">บันทึก</button>
+    </div>
+    <p id="pp-saved-label" style="font-size:.72rem;color:var(--green);margin-top:6px;display:none;"></p>
+  </div>
+
+  <div class="filter-bar" id="ol-filter-bar">
+    <button class="f-btn on" data-filter="ALL">ทั้งหมด</button>
+    <button class="f-btn" data-filter="WAITING_FOR_STORE">รอรับ</button>
+    <button class="f-btn" data-filter="WAITING_PAYMENT">รอชำระ</button>
+    <button class="f-btn" data-filter="MAKING">กำลังทำ</button>
+    <button class="f-btn" data-filter="DELIVERING">กำลังส่ง</button>
+    <button class="f-btn" data-filter="DELIVERED">ส่งแล้ว</button>
+    <button class="f-btn" data-filter="CANCELLED">ยกเลิก</button>
+  </div>
+
+  <div id="ol-list"></div>
+</div>
+
 <!-- OVERLAYS -->
 <div id="ov-sizes" class="overlay hide">
   <div class="sheet">
@@ -326,6 +374,93 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
   </div>
 </div>
 
+<!-- ORDER DETAIL -->
+<div id="ov-order-detail" class="overlay hide">
+  <div class="sheet" style="max-height:92dvh;">
+    <div class="handle"></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+      <div>
+        <div class="sheet-title" id="od-title" style="margin-bottom:6px;"></div>
+        <div><span id="od-status-badge"></span><span id="od-payment-badge" style="margin-left:6px;"></span></div>
+      </div>
+      <span id="od-source" style="font-size:.68rem;color:var(--muted);background:var(--warm);padding:3px 8px;border-radius:6px;flex-shrink:0;margin-left:8px;"></span>
+    </div>
+
+    <div class="card" style="margin-bottom:10px;"><div id="od-customer"></div></div>
+    <div class="card" style="margin-bottom:10px;"><div id="od-items"></div><div class="divider"></div><div id="od-totals"></div></div>
+
+    <div id="od-qr-section" style="display:none;margin-bottom:10px;">
+      <div class="card">
+        <div style="font-size:.82rem;font-weight:700;color:var(--brown-d);margin-bottom:10px;">💳 QR PromptPay</div>
+        <div class="qr-wrap">
+          <canvas id="qr-canvas" style="border-radius:8px;"></canvas>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:6px;" id="qr-amount-label"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+          <button class="btn btn-ghost" id="btn-qr-copy">📋 Copy รูป</button>
+          <button class="btn btn-ghost" id="btn-qr-download">💾 Download</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="od-msg-section" style="display:none;margin-bottom:10px;">
+      <div class="card">
+        <div style="font-size:.82rem;font-weight:700;color:var(--brown-d);margin-bottom:8px;">💬 ข้อความให้ Copy</div>
+        <div class="msg-box" id="od-msg-text"></div>
+        <button class="btn btn-ghost" id="btn-copy-msg">📋 Copy ข้อความ</button>
+      </div>
+    </div>
+
+    <div id="od-actions" style="display:flex;flex-direction:column;gap:8px;padding-bottom:8px;"></div>
+  </div>
+</div>
+
+<!-- CREATE ORDER -->
+<div id="ov-create-order" class="overlay hide">
+  <div class="sheet" style="max-height:92dvh;">
+    <div class="handle"></div>
+    <div class="sheet-title">+ สร้างออเดอร์</div>
+
+    <span class="sec">ข้อมูลลูกค้า</span>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
+      <div><label class="lbl">ชื่อ *</label><input type="text" id="co-name" class="inp" placeholder="ชื่อลูกค้า"></div>
+      <div><label class="lbl">เบอร์โทร *</label><input type="tel" id="co-phone" class="inp" placeholder="0812345678"></div>
+      <div><label class="lbl">ที่อยู่จัดส่ง *</label><input type="text" id="co-address" class="inp" placeholder="บ้านเลขที่ / ซอย"></div>
+      <div><label class="lbl">โน้ต</label><input type="text" id="co-note" class="inp" placeholder="หมายเหตุ"></div>
+    </div>
+
+    <span class="sec">รายการ</span>
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+        <div><label class="lbl">ขนาด *</label><select id="co-size" class="inp"></select></div>
+        <div><label class="lbl">ราคา</label><div id="co-size-price" style="padding:10px 12px;font-size:.88rem;font-weight:700;color:var(--brown-d);">—</div></div>
+      </div>
+      <div style="margin-bottom:10px;"><label class="lbl">รส *</label><div id="co-flavor-btns" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;"></div></div>
+      <div><label class="lbl">ท็อปปิ้ง</label><div id="co-top-btns" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;"></div></div>
+    </div>
+
+    <span class="sec">ค่าส่ง</span>
+    <div class="card" style="margin-bottom:14px;"><div id="co-zone-btns" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <div style="font-size:.82rem;font-weight:700;color:var(--brown-d);margin-bottom:8px;">ช่องทาง</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;" id="co-source-btns">
+        <button class="chip on" data-src="FACEBOOK">Facebook</button>
+        <button class="chip" data-src="LINE">LINE</button>
+        <button class="chip" data-src="WALK_IN">หน้าร้าน</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <div class="sum-row"><span style="color:var(--muted)">ราคาสินค้า</span><span id="co-subtotal" style="font-weight:700;">—</span></div>
+      <div class="sum-row"><span style="color:var(--muted)">ค่าส่ง</span><span id="co-delivery" style="font-weight:700;">—</span></div>
+      <div class="sum-row"><span style="font-weight:700;">รวม</span><span id="co-total" style="font-size:1.05rem;font-weight:700;color:var(--green);">—</span></div>
+    </div>
+
+    <button class="btn btn-green" id="btn-co-submit">✓ สร้างออเดอร์</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -368,7 +503,7 @@ try{S=JSON.parse(lsG('icepos_v4')||'null')||defState();}catch(e){S=defState();}
 S.iceTypes.forEach(t=>{if(S.stock.ice[t.id]==null)S.stock.ice[t.id]=0;if(S.costPerScoop[t.id]==null)S.costPerScoop[t.id]=0;});
 S.topTypes.forEach(t=>{if(S.stock.top[t.id]==null)S.stock.top[t.id]=0;if(S.costPerTop[t.id]==null)S.costPerTop[t.id]=0;});
 const save=()=>lsS('icepos_v4',JSON.stringify(S));
-const GAS_URL='https://script.google.com/macros/s/AKfycbxp6Xnu7WdoV7XrFng61sj737t6A_pXDAHfTmVrpl_sCC5jogCWPG4ThjRelhe7vQQY/exec';
+const GAS_URL='https://script.google.com/macros/s/AKfycbwolgQGSX47gYFK2biDG3a2j6jV93_cSALtu7V72Ju-5nKS2C9cl1rO36ZZaIlX5aEyLg/exec';
 async function syncToSheets(payload){
   try{await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'log',payload})});}
   catch(e){console.warn('Sync failed:',e);}
@@ -407,6 +542,7 @@ el('nav-tabs').addEventListener('click',e=>{
   if(page==='stock'){renderStock();populateStockSelects();}
   if(page==='history')renderHistory();
   if(page==='summary')renderSummary();
+  if(page==='online')loadOnlineOrders();
 });
 
 // ============================================================
@@ -940,6 +1076,279 @@ function renderSummary(){
   else rec='<p style="font-size:.85rem;color:var(--red)">ยังขาดทุน — ตรวจสอบต้นทุน</p>';
   el('s-recommend').innerHTML=rec;
 }
+
+// ============================================================
+// ONLINE ORDERS
+// ============================================================
+let OL_cache=[], OL_filter='ALL', OL_current=null;
+const PP_KEY='icepos_pp';
+const ppPhone=()=>lsG(PP_KEY)||'';
+
+const STATUS_LABEL={WAITING_FOR_STORE:'รอรับออเดอร์',WAITING_PAYMENT:'รอชำระ',PAID:'ชำระแล้ว',MAKING:'กำลังทำ',READY_TO_DELIVER:'พร้อมส่ง',DELIVERING:'กำลังส่ง',DELIVERED:'ส่งแล้ว',CANCELLED:'ยกเลิก'};
+const STATUS_CLS={WAITING_FOR_STORE:'s-wait',WAITING_PAYMENT:'s-wpay',PAID:'s-paid',MAKING:'s-making',READY_TO_DELIVER:'s-ready',DELIVERING:'s-dlv',DELIVERED:'s-done',CANCELLED:'s-cancel'};
+function sbadge(st){return `<span class="sbadge ${STATUS_CLS[st]||''}">${STATUS_LABEL[st]||st}</span>`;}
+
+// Init PromptPay field
+(function(){const ph=ppPhone();if(ph){el('inp-pp-phone').value=ph;el('pp-saved-label').textContent='PromptPay: '+ph;el('pp-saved-label').style.display='block';}})();
+
+el('btn-pp-save').onclick=function(){
+  const ph=(el('inp-pp-phone').value||'').replace(/[^0-9]/g,'');
+  if(ph.length<9){toast('⚠️ เบอร์ไม่ถูกต้อง');return;}
+  lsS(PP_KEY,ph);
+  el('pp-saved-label').textContent='บันทึกแล้ว: '+ph;el('pp-saved-label').style.display='block';
+  toast('✓ บันทึก PromptPay '+ph);
+};
+
+el('ol-filter-bar').addEventListener('click',e=>{
+  const btn=e.target.closest('.f-btn');if(!btn)return;
+  OL_filter=btn.dataset.filter;
+  document.querySelectorAll('.f-btn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');renderOnlineList();
+});
+
+async function loadOnlineOrders(){
+  el('ol-list').innerHTML='<p style="text-align:center;color:var(--muted);padding:24px;font-size:.85rem;">กำลังโหลด...</p>';
+  try{
+    const res=await fetch(GAS_URL+'?action=getOrders');
+    const data=await res.json();
+    OL_cache=data.orders||[];
+    el('ol-count').textContent=OL_cache.length+' รายการ';
+    renderOnlineList();
+  }catch(e){el('ol-list').innerHTML='<div class="alert-red">⚠️ โหลดไม่ได้ ตรวจสอบการเชื่อมต่อ</div>';}
+}
+
+function renderOnlineList(){
+  const list=OL_filter==='ALL'?OL_cache:OL_cache.filter(o=>o.order_status===OL_filter);
+  const c=el('ol-list');c.innerHTML='';
+  if(!list.length){c.innerHTML='<p style="text-align:center;color:var(--muted);padding:32px 0;font-size:.85rem;">ไม่มีออเดอร์</p>';return;}
+  const sorted=[...list].sort((a,b)=>(b.created_at||'')>(a.created_at||'')?1:-1);
+  sorted.forEach(o=>{
+    const d=o.created_at?new Date(o.created_at).toLocaleString('th-TH',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
+    const div=document.createElement('div');div.className='o-card';
+    div.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;"><span style="font-size:.88rem;font-weight:700;color:var(--brown-d)">${o.order_no}</span><span style="font-size:.7rem;color:var(--muted)">${d}</span></div><div style="font-size:.82rem;margin-bottom:6px;">${o.customer_name||'—'} · ${o.phone||'—'}</div><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">${sbadge(o.order_status)}${o.payment_status==='PAID'?'<span class="sbadge s-paid">✓ ชำระแล้ว</span>':''}<span style="margin-left:auto;font-size:.88rem;font-weight:700;color:var(--brown-d)">฿${o.total}</span></div>`;
+    div.onclick=()=>openOrderDetail(o.order_no);
+    c.appendChild(div);
+  });
+}
+
+el('btn-ol-refresh').onclick=loadOnlineOrders;
+
+function openOrderDetail(order_no){
+  const o=OL_cache.find(x=>x.order_no===order_no);if(!o)return;
+  OL_current=o;renderOrderDetail(o);showOv('ov-order-detail');
+}
+
+function renderOrderDetail(o){
+  el('od-title').textContent='Order '+o.order_no;
+  el('od-status-badge').innerHTML=sbadge(o.order_status);
+  el('od-payment-badge').innerHTML=o.payment_status==='PAID'?'<span class="sbadge s-paid">💚 ชำระแล้ว</span>':'<span class="sbadge s-wpay">รอชำระ</span>';
+  const srcL={WEBSITE:'🌐 Website',FACEBOOK:'📘 Facebook',LINE:'💚 LINE',WALK_IN:'🏪 หน้าร้าน'};
+  el('od-source').textContent=srcL[o.source]||o.source||'—';
+
+  el('od-customer').innerHTML=`<div style="font-size:.82rem;line-height:1.9;"><div>👤 <b>${o.customer_name||'—'}</b></div><div>📞 ${o.phone||'—'}</div><div>📍 ${o.address||'—'}</div>${o.note?`<div style="color:var(--muted)">📝 ${o.note}</div>`:''}</div>`;
+
+  const items=Array.isArray(o.items)?o.items:[];
+  const tops=Array.isArray(o.toppings)?o.toppings:[];
+  let ih='<div style="font-size:.8rem;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;">รายการ</div>';
+  if(items.length){items.forEach(it=>{ih+=`<div style="font-size:.85rem;padding:3px 0;">${it.flavor||''} (${it.size||''}) × ${it.qty||1} — ฿${it.unit_price||0}</div>`;});}
+  else{ih+='<div style="font-size:.82rem;color:var(--muted);">ไม่ระบุรายการ</div>';}
+  if(tops.length){ih+=`<div style="font-size:.72rem;color:var(--muted);margin-top:6px;">ท็อปปิ้ง: ${tops.map(t=>t.name||t).join(', ')}</div>`;}
+  el('od-items').innerHTML=ih;
+
+  el('od-totals').innerHTML=`<div class="sum-row"><span style="color:var(--muted)">ราคาสินค้า</span><span>฿${o.subtotal||0}</span></div><div class="sum-row"><span style="color:var(--muted)">ค่าส่ง</span><span>฿${o.delivery_fee||0}</span></div><div class="sum-row"><span style="font-weight:700;">รวม</span><span style="font-size:1.05rem;font-weight:700;color:var(--green)">฿${o.total||0}</span></div>`;
+
+  const canQR=['WAITING_FOR_STORE','WAITING_PAYMENT'].includes(o.order_status)&&ppPhone();
+  el('od-qr-section').style.display=canQR?'block':'none';
+  if(canQR){el('qr-amount-label').textContent='฿'+o.total+' · '+ppPhone();setTimeout(()=>genQRCanvas(ppPhone(),parseFloat(o.total)||0),50);}
+
+  const msg=buildMessage(o);
+  el('od-msg-section').style.display=msg?'block':'none';
+  if(msg){el('od-msg-text').textContent=msg;el('btn-copy-msg').onclick=()=>{copyText(msg);toast('✓ Copy แล้ว!');};}
+
+  renderOrderActions(o);
+}
+
+function renderOrderActions(o){
+  const c=el('od-actions');c.innerHTML='';
+  const addBtn=(text,cls,fn)=>{const b=document.createElement('button');b.className='btn '+cls;b.textContent=text;b.onclick=fn;c.appendChild(b);};
+  if(o.order_status==='WAITING_FOR_STORE'){
+    addBtn('✓ รับออเดอร์','btn-brown',()=>doUpdateStatus(o.order_no,'WAITING_PAYMENT'));
+    addBtn('✕ ยกเลิก','btn-ghost',()=>doCancelOrder(o.order_no));
+  }
+  if(o.order_status==='WAITING_PAYMENT'){
+    addBtn('💚 ยืนยันการชำระ','btn-green',()=>doConfirmPayment(o.order_no));
+    addBtn('✕ ยกเลิก','btn-ghost',()=>doCancelOrder(o.order_no));
+  }
+  if(o.order_status==='MAKING')addBtn('✓ ทำเสร็จแล้ว','btn-brown',()=>doUpdateStatus(o.order_no,'READY_TO_DELIVER'));
+  if(o.order_status==='READY_TO_DELIVER')addBtn('🛵 ออกส่งแล้ว','btn-brown',()=>doUpdateStatus(o.order_no,'DELIVERING'));
+  if(o.order_status==='DELIVERING')addBtn('✅ ส่งสำเร็จ','btn-green',()=>doDelivered(o.order_no));
+}
+
+function buildMessage(o){
+  const no=o.order_no,total=o.total;
+  if(o.order_status==='WAITING_PAYMENT')return `รับออเดอร์แล้วครับ 🍨\nOrder #${no}\n\nกรุณาโอนเงิน ${total} บาท\nผ่าน PromptPay ตาม QR ด้านบน\n\nโอนแล้วส่งสลิปมาได้เลยครับ 🙏`;
+  if(o.order_status==='MAKING')return `ได้รับเงินแล้วครับ ✅\nกำลังตักไอศกรีมให้เลยครับ 🍨`;
+  if(o.order_status==='READY_TO_DELIVER')return `ไอศกรีมพร้อมแล้วครับ 🍦\nกำลังออกส่งเดี๋ยวนี้เลยครับ!`;
+  if(o.order_status==='DELIVERING')return `ออกส่งแล้วครับ 🛵\nใกล้ถึงแล้ว รอรับได้เลยครับ!`;
+  if(o.order_status==='DELIVERED')return `📦 จัดส่งเรียบร้อยแล้วครับ\n\n🍨 Order #${no}\n\nสินค้าวางไว้หน้าบ้านเรียบร้อย\n\nรีบลงมาเอาก่อนนะครับ\nไอศกรีมกำลังจะละลาย 😆🍦\n\nขอบคุณที่อุดหนุน Scoop by Loki 💜`;
+  return '';
+}
+
+// GAS actions
+async function doUpdateStatus(order_no,new_status){
+  try{
+    const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'updateOrderStatus',payload:{order_no,order_status:new_status}})});
+    const d=await r.json();
+    if(d.success){toast('✓ อัปเดตสถานะแล้ว');await loadOnlineOrders();const u=OL_cache.find(x=>x.order_no===order_no);if(u){OL_current=u;renderOrderDetail(u);}}
+    else toast('⚠️ '+(d.error||'ไม่สำเร็จ'));
+  }catch(e){toast('⚠️ เชื่อมต่อไม่ได้');}
+}
+
+async function doConfirmPayment(order_no){
+  try{
+    const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'confirmPayment',payload:{order_no}})});
+    const d=await r.json();
+    if(d.success){toast('✓ ยืนยันการชำระแล้ว');await loadOnlineOrders();const u=OL_cache.find(x=>x.order_no===order_no);if(u){OL_current=u;renderOrderDetail(u);}}
+    else toast('⚠️ '+(d.error||'ไม่สำเร็จ'));
+  }catch(e){toast('⚠️ เชื่อมต่อไม่ได้');}
+}
+
+function doCancelOrder(order_no){
+  if(!confirm('ยกเลิกออเดอร์ '+order_no+' จริงๆ ไหม?'))return;
+  doUpdateStatus(order_no,'CANCELLED');
+}
+
+async function doDelivered(order_no){
+  const photo=prompt('URL รูปหลักฐานการส่ง (กด OK เพื่อข้าม):')||'';
+  try{
+    const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'setDeliveryPhoto',payload:{order_no,photo_url:photo}})});
+    const d=await r.json();
+    if(d.success){toast('✓ ส่งสำเร็จ!');await loadOnlineOrders();const u=OL_cache.find(x=>x.order_no===order_no);if(u){OL_current=u;renderOrderDetail(u);}}
+    else toast('⚠️ '+(d.error||'ไม่สำเร็จ'));
+  }catch(e){toast('⚠️ เชื่อมต่อไม่ได้');}
+}
+
+// PromptPay QR
+function genPromptPayPayload(phone,amount){
+  const acc='0066'+phone.replace(/^0/,'').replace(/[^0-9]/g,'');
+  function tlv(id,val){return id+String(val.length).padStart(2,'0')+val;}
+  function crc16(str){let c=0xFFFF;for(let i=0;i<str.length;i++){c^=str.charCodeAt(i)<<8;for(let j=0;j<8;j++)c=(c&0x8000)?((c<<1)^0x1021):(c<<1);}return('0000'+(c&0xFFFF).toString(16).toUpperCase()).slice(-4);}
+  const mch=tlv('00','A000000677010111')+tlv('01',acc);
+  let p=tlv('00','01')+tlv('01','12')+tlv('29',mch)+tlv('53','764')+tlv('54',amount.toFixed(2))+tlv('58','TH')+'6304';
+  return p+crc16(p);
+}
+
+function genQRCanvas(phone,amount){
+  const canvas=el('qr-canvas');if(!canvas)return;
+  const payload=genPromptPayPayload(phone,amount);
+  if(typeof QRCode!=='undefined'){QRCode.toCanvas(canvas,payload,{width:200,margin:2,color:{dark:'#000000',light:'#ffffff'}},err=>{if(err)console.warn('QR:',err);});}
+}
+
+el('btn-qr-copy').onclick=async function(){
+  const canvas=el('qr-canvas');if(!canvas)return;
+  try{canvas.toBlob(async blob=>{await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);toast('✓ Copy รูป QR แล้ว!');});}
+  catch(e){toast('⚠️ Copy ไม่ได้ กด Download แทน');}
+};
+el('btn-qr-download').onclick=function(){
+  const canvas=el('qr-canvas');if(!canvas)return;
+  const a=document.createElement('a');a.download='qr-'+(OL_current?.order_no||'promptpay')+'.png';a.href=canvas.toDataURL();a.click();
+};
+
+function copyText(text){
+  if(navigator.clipboard){navigator.clipboard.writeText(text);}
+  else{const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);}
+}
+
+// Create Order
+let CO={sizeId:null,flavors:[],toppings:[],deliveryFee:0,source:'FACEBOOK'};
+
+function initCreateOrder(){
+  CO={sizeId:null,flavors:[],toppings:[],deliveryFee:0,source:'FACEBOOK'};
+  el('co-name').value='';el('co-phone').value='';el('co-address').value='';el('co-note').value='';
+  el('co-size').value='';el('co-size-price').textContent='—';
+
+  const sel=el('co-size');sel.innerHTML='<option value="">— เลือกขนาด —</option>';
+  S.sizes.forEach(sz=>{const o=document.createElement('option');o.value=sz.id;o.textContent=sz.label+' (฿'+sz.price+')';sel.appendChild(o);});
+
+  const fb=el('co-flavor-btns');fb.innerHTML='';
+  S.iceTypes.forEach(t=>{const b=document.createElement('button');b.className='chip';b.textContent=t.e+' '+t.name;b.dataset.id=t.id;b.onclick=()=>toggleCOFlavor(t.id,b);fb.appendChild(b);});
+
+  const tb=el('co-top-btns');tb.innerHTML='';
+  S.topTypes.forEach(t=>{
+    const b=document.createElement('button');b.className='top-chip';b.dataset.id=t.id;
+    const nm=document.createElement('span');nm.textContent=t.e+' '+t.name;
+    const pr=document.createElement('span');pr.style.cssText='font-size:.68rem;color:var(--muted);';pr.textContent='+5฿';
+    b.appendChild(nm);b.appendChild(pr);b.onclick=()=>toggleCOTop(t.id,b);tb.appendChild(b);
+  });
+
+  const zb=el('co-zone-btns');zb.innerHTML='';
+  [{fee:5,label:'5฿ — พฤกษา 116'},{fee:15,label:'15฿ — ซ.มาลี, ตะวันออก 14-16, นำรงค์, เศรษฐบุตร, Fullhouse, ซ.ซูม, เจริญสุข, สะพานชมพู'},{fee:20,label:'20฿ — พร 3, พร 4, พรทวี, โฟร์บี, Maple, หมูน้ำแข็ง, R.S., Icon, ซ.อีส, Kave'}].forEach(z=>{
+    const b=document.createElement('button');b.className='chip';b.style.cssText='text-align:left;width:100%;white-space:normal;height:auto;padding:10px 16px;';
+    b.dataset.fee=z.fee;b.textContent=z.label;
+    b.onclick=()=>{CO.deliveryFee=z.fee;document.querySelectorAll('#co-zone-btns .chip').forEach(x=>x.classList.remove('on'));b.classList.add('on');updateCOSummary();};
+    zb.appendChild(b);
+  });
+
+  document.querySelectorAll('#co-source-btns .chip').forEach(b=>{
+    b.classList.remove('on');if(b.dataset.src==='FACEBOOK')b.classList.add('on');
+    b.onclick=()=>{CO.source=b.dataset.src;document.querySelectorAll('#co-source-btns .chip').forEach(x=>x.classList.remove('on'));b.classList.add('on');};
+  });
+
+  updateCOSummary();
+}
+
+el('co-size').onchange=function(){
+  CO.sizeId=this.value;CO.flavors=[];
+  document.querySelectorAll('#co-flavor-btns .chip').forEach(b=>b.classList.remove('on'));
+  const sz=S.sizes.find(s=>s.id===CO.sizeId);
+  el('co-size-price').textContent=sz?'฿'+sz.price:'—';
+  updateCOSummary();
+};
+
+function toggleCOFlavor(id,btn){
+  const sz=S.sizes.find(s=>s.id===CO.sizeId);const max=sz?sz.maxFlavor:1;
+  if(CO.flavors.includes(id)){CO.flavors=CO.flavors.filter(f=>f!==id);btn.classList.remove('on');}
+  else{if(CO.flavors.length>=max){const old=CO.flavors.shift();document.querySelector(`#co-flavor-btns [data-id="${old}"]`)?.classList.remove('on');}CO.flavors.push(id);btn.classList.add('on');}
+  updateCOSummary();
+}
+
+function toggleCOTop(id,btn){
+  if(CO.toppings.includes(id)){CO.toppings=CO.toppings.filter(t=>t!==id);btn.classList.remove('on');}
+  else{CO.toppings.push(id);btn.classList.add('on');}
+  updateCOSummary();
+}
+
+function updateCOSummary(){
+  const sz=S.sizes.find(s=>s.id===CO.sizeId);
+  if(!sz){el('co-subtotal').textContent='—';el('co-delivery').textContent='—';el('co-total').textContent='—';return;}
+  const extra=Math.max(0,CO.toppings.length-(sz.freeTops||0));
+  const sub=sz.price+extra*5;const tot=sub+CO.deliveryFee;
+  el('co-subtotal').textContent='฿'+sub;
+  el('co-delivery').textContent=CO.deliveryFee>0?'฿'+CO.deliveryFee:'—';
+  el('co-total').textContent='฿'+tot;
+}
+
+el('btn-ol-create').onclick=function(){initCreateOrder();showOv('ov-create-order');};
+
+el('btn-co-submit').onclick=async function(){
+  const name=(el('co-name').value||'').trim(),phone=(el('co-phone').value||'').trim(),address=(el('co-address').value||'').trim(),note=(el('co-note').value||'').trim();
+  if(!name||!phone||!address){toast('⚠️ ใส่ชื่อ เบอร์ และที่อยู่ด้วย');return;}
+  if(!CO.sizeId||!CO.flavors.length){toast('⚠️ เลือกขนาดและรสด้วย');return;}
+  const sz=S.sizes.find(s=>s.id===CO.sizeId);
+  const free=sz.freeTops||0,extra=Math.max(0,CO.toppings.length-free);
+  const sub=sz.price+extra*5,tot=sub+CO.deliveryFee;
+  const items=CO.flavors.map(fid=>{const f=S.iceTypes.find(x=>x.id===fid);return{flavor:f?f.name:fid,size:sz.label,qty:1,unit_price:sz.price};});
+  const toppings=CO.toppings.map((tid,i)=>{const t=S.topTypes.find(x=>x.id===tid);return{name:t?t.name:tid,price:i<free?0:5};});
+  const payload={customer_name:name,phone,address,note,source:CO.source,items,toppings,subtotal:sub,delivery_fee:CO.deliveryFee,total:tot};
+  const btn=el('btn-co-submit');btn.disabled=true;btn.textContent='กำลังสร้าง...';
+  try{
+    const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'createOrder',payload})});
+    const d=await r.json();
+    if(d.success){hideOv('ov-create-order');toast('✓ สร้างออเดอร์ '+d.order_no+' แล้ว');await loadOnlineOrders();}
+    else toast('⚠️ '+(d.error||'ไม่สำเร็จ'));
+  }catch(e){toast('⚠️ เชื่อมต่อไม่ได้');}
+  finally{btn.disabled=false;btn.textContent='✓ สร้างออเดอร์';}
+};
 
 // ============================================================
 // INIT
