@@ -1291,6 +1291,7 @@ function localConfirmOnlineOrder(o){
 
   S.orders.push({type:'sale',size:sz?.label||sizeId,scoops:sz?.scoops||0,flavors,toppings:toppingIds,price,cost:Math.round(cost),profit,date:_d,order_no:o.order_no});
   save();
+  syncToSheets({type:'sale',date:_d,size:sz?.label||sizeId,flavors,toppings:toppingIds,price,cost:Math.round(cost),profit});
   renderHistory();renderSummary();renderStock();
 }
 
