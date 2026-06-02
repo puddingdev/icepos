@@ -161,6 +161,7 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
     </div>
     <div id="stock-warn" style="display:none;" class="alert-red">⚠️ <span id="stock-warn-msg"></span></div>
     <button class="btn btn-green" id="btn-confirm" style="margin-bottom:8px;font-size:1rem;padding:15px;">✓ ยืนยันการขาย</button>
+    <button class="btn btn-ghost" id="btn-create-from-pos" style="margin-bottom:8px;">🛵 สร้างออเดอร์ Online</button>
     <button class="btn btn-ghost" id="btn-cancel">ยกเลิก</button>
   </div>
 
@@ -281,10 +282,7 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 <div id="page-online" class="page">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
     <span class="sec" style="margin:0">Online Orders <span id="ol-count" style="font-weight:400;font-size:.7rem;"></span></span>
-    <div style="display:flex;gap:6px;">
-      <button class="btn-sm" id="btn-ol-refresh">🔄 รีเฟรช</button>
-      <button class="btn-sm" id="btn-ol-create">+ สร้างออเดอร์</button>
-    </div>
+    <button class="btn-sm" id="btn-ol-refresh">🔄 รีเฟรช</button>
   </div>
 
   <div class="card" style="margin-bottom:14px;">
@@ -424,19 +422,14 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
     <span class="sec">ข้อมูลลูกค้า</span>
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
       <div><label class="lbl">ชื่อ *</label><input type="text" id="co-name" class="inp" placeholder="ชื่อลูกค้า"></div>
-      <div><label class="lbl">เบอร์โทร *</label><input type="tel" id="co-phone" class="inp" placeholder="0812345678"></div>
+      <div><label class="lbl">เบอร์โทร</label><input type="tel" id="co-phone" class="inp" placeholder="0812345678 (ถ้ามี)"></div>
       <div><label class="lbl">ที่อยู่จัดส่ง *</label><input type="text" id="co-address" class="inp" placeholder="บ้านเลขที่ / ซอย"></div>
       <div><label class="lbl">โน้ต</label><input type="text" id="co-note" class="inp" placeholder="หมายเหตุ"></div>
     </div>
 
-    <span class="sec">รายการ</span>
-    <div class="card" style="margin-bottom:14px;">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
-        <div><label class="lbl">ขนาด *</label><select id="co-size" class="inp"></select></div>
-        <div><label class="lbl">ราคา</label><div id="co-size-price" style="padding:10px 12px;font-size:.88rem;font-weight:700;color:var(--brown-d);">—</div></div>
-      </div>
-      <div style="margin-bottom:10px;"><label class="lbl">รส *</label><div id="co-flavor-btns" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;"></div></div>
-      <div><label class="lbl">ท็อปปิ้ง</label><div id="co-top-btns" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;"></div></div>
+    <div class="card" style="margin-bottom:14px;background:var(--warm);">
+      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">รายการจาก POS</div>
+      <div id="co-pos-summary" style="font-size:.88rem;color:var(--text);"></div>
     </div>
 
     <span class="sec">ค่าส่ง</span>
@@ -1259,32 +1252,24 @@ function copyText(text){
   else{const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);}
 }
 
-// Create Order
-let CO={sizeId:null,flavors:[],toppings:[],deliveryFee:0,source:'FACEBOOK'};
+// Create Order (uses POS selection state O)
+let CO={deliveryFee:0,source:'FACEBOOK'};
 
 function initCreateOrder(){
-  CO={sizeId:null,flavors:[],toppings:[],deliveryFee:0,source:'FACEBOOK'};
+  CO={deliveryFee:0,source:'FACEBOOK'};
   el('co-name').value='';el('co-phone').value='';el('co-address').value='';el('co-note').value='';
-  el('co-size').value='';el('co-size-price').textContent='—';
 
-  const sel=el('co-size');sel.innerHTML='<option value="">— เลือกขนาด —</option>';
-  S.sizes.forEach(sz=>{const o=document.createElement('option');o.value=sz.id;o.textContent=sz.label+' (฿'+sz.price+')';sel.appendChild(o);});
+  // Show POS item summary
+  const sz=S.sizes.find(s=>s.id===O.sizeId);
+  const flavNames=O.flavors.map(f=>S.iceTypes.find(t=>t.id===f)?.name||f).join(' + ');
+  const topNames=O.toppings.map(t=>S.topTypes.find(x=>x.id===t)?.name||t).join(', ');
+  el('co-pos-summary').innerHTML=`<b>${sz?.label||''}</b> · ${flavNames}${topNames?' · <span style="color:var(--muted)">'+topNames+'</span>':''} <span style="font-weight:700;color:var(--brown-d)">฿${O._price||0}</span>`;
 
-  const fb=el('co-flavor-btns');fb.innerHTML='';
-  S.iceTypes.forEach(t=>{const b=document.createElement('button');b.className='chip';b.textContent=t.e+' '+t.name;b.dataset.id=t.id;b.onclick=()=>toggleCOFlavor(t.id,b);fb.appendChild(b);});
-
-  const tb=el('co-top-btns');tb.innerHTML='';
-  S.topTypes.forEach(t=>{
-    const b=document.createElement('button');b.className='top-chip';b.dataset.id=t.id;
-    const nm=document.createElement('span');nm.textContent=t.e+' '+t.name;
-    const pr=document.createElement('span');pr.style.cssText='font-size:.68rem;color:var(--muted);';pr.textContent='+5฿';
-    b.appendChild(nm);b.appendChild(pr);b.onclick=()=>toggleCOTop(t.id,b);tb.appendChild(b);
-  });
-
+  // Reset zone buttons
   const zb=el('co-zone-btns');zb.innerHTML='';
   [{fee:5,label:'5฿ — พฤกษา 116'},{fee:15,label:'15฿ — ซ.มาลี, ตะวันออก 14-16, นำรงค์, เศรษฐบุตร, Fullhouse, ซ.ซูม, เจริญสุข, สะพานชมพู'},{fee:20,label:'20฿ — พร 3, พร 4, พรทวี, โฟร์บี, Maple, หมูน้ำแข็ง, R.S., Icon, ซ.อีส, Kave'}].forEach(z=>{
     const b=document.createElement('button');b.className='chip';b.style.cssText='text-align:left;width:100%;white-space:normal;height:auto;padding:10px 16px;';
-    b.dataset.fee=z.fee;b.textContent=z.label;
+    b.textContent=z.label;
     b.onclick=()=>{CO.deliveryFee=z.fee;document.querySelectorAll('#co-zone-btns .chip').forEach(x=>x.classList.remove('on'));b.classList.add('on');updateCOSummary();};
     zb.appendChild(b);
   });
@@ -1297,54 +1282,32 @@ function initCreateOrder(){
   updateCOSummary();
 }
 
-el('co-size').onchange=function(){
-  CO.sizeId=this.value;CO.flavors=[];
-  document.querySelectorAll('#co-flavor-btns .chip').forEach(b=>b.classList.remove('on'));
-  const sz=S.sizes.find(s=>s.id===CO.sizeId);
-  el('co-size-price').textContent=sz?'฿'+sz.price:'—';
-  updateCOSummary();
-};
-
-function toggleCOFlavor(id,btn){
-  const sz=S.sizes.find(s=>s.id===CO.sizeId);const max=sz?sz.maxFlavor:1;
-  if(CO.flavors.includes(id)){CO.flavors=CO.flavors.filter(f=>f!==id);btn.classList.remove('on');}
-  else{if(CO.flavors.length>=max){const old=CO.flavors.shift();document.querySelector(`#co-flavor-btns [data-id="${old}"]`)?.classList.remove('on');}CO.flavors.push(id);btn.classList.add('on');}
-  updateCOSummary();
-}
-
-function toggleCOTop(id,btn){
-  if(CO.toppings.includes(id)){CO.toppings=CO.toppings.filter(t=>t!==id);btn.classList.remove('on');}
-  else{CO.toppings.push(id);btn.classList.add('on');}
-  updateCOSummary();
-}
-
 function updateCOSummary(){
-  const sz=S.sizes.find(s=>s.id===CO.sizeId);
-  if(!sz){el('co-subtotal').textContent='—';el('co-delivery').textContent='—';el('co-total').textContent='—';return;}
-  const extra=Math.max(0,CO.toppings.length-(sz.freeTops||0));
-  const sub=sz.price+extra*5;const tot=sub+CO.deliveryFee;
-  el('co-subtotal').textContent='฿'+sub;
+  const sub=O._price||0,tot=sub+CO.deliveryFee;
+  el('co-subtotal').textContent=sub?'฿'+sub:'—';
   el('co-delivery').textContent=CO.deliveryFee>0?'฿'+CO.deliveryFee:'—';
-  el('co-total').textContent='฿'+tot;
+  el('co-total').textContent=sub?'฿'+tot:'—';
 }
 
-el('btn-ol-create').onclick=function(){initCreateOrder();showOv('ov-create-order');};
+el('btn-create-from-pos').onclick=function(){
+  if(!O.sizeId||!O.flavors.length){toast('⚠️ เลือกขนาดและรสก่อน');return;}
+  initCreateOrder();showOv('ov-create-order');
+};
 
 el('btn-co-submit').onclick=async function(){
   const name=(el('co-name').value||'').trim(),phone=(el('co-phone').value||'').trim(),address=(el('co-address').value||'').trim(),note=(el('co-note').value||'').trim();
-  if(!name||!phone||!address){toast('⚠️ ใส่ชื่อ เบอร์ และที่อยู่ด้วย');return;}
-  if(!CO.sizeId||!CO.flavors.length){toast('⚠️ เลือกขนาดและรสด้วย');return;}
-  const sz=S.sizes.find(s=>s.id===CO.sizeId);
-  const free=sz.freeTops||0,extra=Math.max(0,CO.toppings.length-free);
-  const sub=sz.price+extra*5,tot=sub+CO.deliveryFee;
-  const items=CO.flavors.map(fid=>{const f=S.iceTypes.find(x=>x.id===fid);return{flavor:f?f.name:fid,size:sz.label,qty:1,unit_price:sz.price};});
-  const toppings=CO.toppings.map((tid,i)=>{const t=S.topTypes.find(x=>x.id===tid);return{name:t?t.name:tid,price:i<free?0:5};});
+  if(!name||!address){toast('⚠️ ใส่ชื่อและที่อยู่ด้วย');return;}
+  const sz=S.sizes.find(s=>s.id===O.sizeId);
+  const free=sz.freeTops||0;
+  const sub=O._price||0,tot=sub+CO.deliveryFee;
+  const items=O.flavors.map(fid=>{const f=S.iceTypes.find(x=>x.id===fid);return{flavor:f?f.name:fid,size:sz.label,qty:1,unit_price:sz.price};});
+  const toppings=O.toppings.map((tid,i)=>{const t=S.topTypes.find(x=>x.id===tid);return{name:t?t.name:tid,price:i<free?0:5};});
   const payload={customer_name:name,phone,address,note,source:CO.source,items,toppings,subtotal:sub,delivery_fee:CO.deliveryFee,total:tot};
   const btn=el('btn-co-submit');btn.disabled=true;btn.textContent='กำลังสร้าง...';
   try{
     const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'createOrder',payload})});
     const d=await r.json();
-    if(d.success){hideOv('ov-create-order');toast('✓ สร้างออเดอร์ '+d.order_no+' แล้ว');await loadOnlineOrders();}
+    if(d.success){hideOv('ov-create-order');toast('✓ สร้างออเดอร์ '+d.order_no+' แล้ว');}
     else toast('⚠️ '+(d.error||'ไม่สำเร็จ'));
   }catch(e){toast('⚠️ เชื่อมต่อไม่ได้');}
   finally{btn.disabled=false;btn.textContent='✓ สร้างออเดอร์';}
