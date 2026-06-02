@@ -1102,14 +1102,23 @@ el('ol-filter-bar').addEventListener('click',e=>{
 });
 
 async function loadOnlineOrders(){
-  el('ol-list').innerHTML='<p style="text-align:center;color:var(--muted);padding:24px;font-size:.85rem;">กำลังโหลด...</p>';
+  if(!OL_cache.length)el('ol-list').innerHTML='<p style="text-align:center;color:var(--muted);padding:24px;font-size:.85rem;">กำลังโหลด...</p>';
+  el('ol-count').textContent=(OL_cache.length?OL_cache.length+' รายการ ↻':'กำลังโหลด...');
   try{
     const res=await fetch(GAS_URL+'?action=getOrders');
     const data=await res.json();
     OL_cache=data.orders||[];
     el('ol-count').textContent=OL_cache.length+' รายการ';
     renderOnlineList();
-  }catch(e){el('ol-list').innerHTML='<div class="alert-red">⚠️ โหลดไม่ได้ ตรวจสอบการเชื่อมต่อ</div>';}
+  }catch(e){if(!OL_cache.length)el('ol-list').innerHTML='<div class="alert-red">⚠️ โหลดไม่ได้ ตรวจสอบการเชื่อมต่อ</div>';}
+}
+
+function patchOrder(order_no,updates){
+  const idx=OL_cache.findIndex(x=>x.order_no===order_no);
+  if(idx<0)return null;
+  Object.assign(OL_cache[idx],updates);
+  renderOnlineList();
+  return OL_cache[idx];
 }
 
 function renderOnlineList(){
@@ -1198,23 +1207,27 @@ function buildMessage(o){
   return '';
 }
 
-// GAS actions
+// GAS actions — optimistic update: อัป UI ทันที, sync GAS ใน background
 async function doUpdateStatus(order_no,new_status){
+  const u=patchOrder(order_no,{order_status:new_status});
+  if(u&&OL_current?.order_no===order_no){OL_current=u;renderOrderDetail(u);}
+  toast('✓ อัปเดตสถานะแล้ว');
   try{
     const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'updateOrderStatus',payload:{order_no,order_status:new_status}})});
     const d=await r.json();
-    if(d.success){toast('✓ อัปเดตสถานะแล้ว');await loadOnlineOrders();const u=OL_cache.find(x=>x.order_no===order_no);if(u){OL_current=u;renderOrderDetail(u);}}
-    else toast('⚠️ '+(d.error||'ไม่สำเร็จ'));
-  }catch(e){toast('⚠️ เชื่อมต่อไม่ได้');}
+    if(!d.success){toast('⚠️ '+(d.error||'ไม่สำเร็จ'));loadOnlineOrders();}
+  }catch(e){toast('⚠️ เชื่อมต่อไม่ได้');loadOnlineOrders();}
 }
 
 async function doConfirmPayment(order_no){
+  const u=patchOrder(order_no,{payment_status:'PAID',order_status:'MAKING'});
+  if(u&&OL_current?.order_no===order_no){OL_current=u;renderOrderDetail(u);}
+  toast('✓ ยืนยันการชำระแล้ว');
   try{
     const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'confirmPayment',payload:{order_no}})});
     const d=await r.json();
-    if(d.success){toast('✓ ยืนยันการชำระแล้ว');await loadOnlineOrders();const u=OL_cache.find(x=>x.order_no===order_no);if(u){OL_current=u;renderOrderDetail(u);}}
-    else toast('⚠️ '+(d.error||'ไม่สำเร็จ'));
-  }catch(e){toast('⚠️ เชื่อมต่อไม่ได้');}
+    if(!d.success){toast('⚠️ '+(d.error||'ไม่สำเร็จ'));loadOnlineOrders();}
+  }catch(e){toast('⚠️ เชื่อมต่อไม่ได้');loadOnlineOrders();}
 }
 
 function doCancelOrder(order_no){
@@ -1224,12 +1237,14 @@ function doCancelOrder(order_no){
 
 async function doDelivered(order_no){
   const photo=prompt('URL รูปหลักฐานการส่ง (กด OK เพื่อข้าม):')||'';
+  const u=patchOrder(order_no,{order_status:'DELIVERED',delivery_photo_url:photo});
+  if(u&&OL_current?.order_no===order_no){OL_current=u;renderOrderDetail(u);}
+  toast('✓ ส่งสำเร็จ!');
   try{
     const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'setDeliveryPhoto',payload:{order_no,photo_url:photo}})});
     const d=await r.json();
-    if(d.success){toast('✓ ส่งสำเร็จ!');await loadOnlineOrders();const u=OL_cache.find(x=>x.order_no===order_no);if(u){OL_current=u;renderOrderDetail(u);}}
-    else toast('⚠️ '+(d.error||'ไม่สำเร็จ'));
-  }catch(e){toast('⚠️ เชื่อมต่อไม่ได้');}
+    if(!d.success){toast('⚠️ '+(d.error||'ไม่สำเร็จ'));loadOnlineOrders();}
+  }catch(e){toast('⚠️ เชื่อมต่อไม่ได้');loadOnlineOrders();}
 }
 
 // PromptPay QR
