@@ -811,7 +811,7 @@ el('btn-confirm').onclick=function(){
   el('flavor-card').style.display='none';
   el('topping-card').style.display='none';
   el('order-summary-card').style.display='none';
-  renderSellAlert();
+  renderSellAlert();renderHistory();renderSummary();
 };
 
 el('btn-cancel').onclick=function(){
@@ -872,7 +872,7 @@ el('btn-confirm-eat').onclick=function(){
   if(!any){toast('ยังไม่ได้ใส่จำนวนเลย 😅');return;}
   const _d=new Date().toISOString();
   S.orders.push({type:'eat',ice,top,date:_d});
-  save();syncToSheets({type:'eat',date:_d,ice,top});hideOv('ov-eat');renderSellAlert();toast('😋 หักสต็อกแล้ว อร่อยนะ!');
+  save();syncToSheets({type:'eat',date:_d,ice,top});hideOv('ov-eat');renderSellAlert();renderHistory();renderSummary();toast('😋 หักสต็อกแล้ว อร่อยนะ!');
 };
 
 // ============================================================
@@ -1236,12 +1236,11 @@ function doCancelOrder(order_no){
 }
 
 async function doDelivered(order_no){
-  const photo=prompt('URL รูปหลักฐานการส่ง (กด OK เพื่อข้าม):')||'';
-  const u=patchOrder(order_no,{order_status:'DELIVERED',delivery_photo_url:photo});
+  const u=patchOrder(order_no,{order_status:'DELIVERED'});
   if(u&&OL_current?.order_no===order_no){OL_current=u;renderOrderDetail(u);}
   toast('✓ ส่งสำเร็จ!');
   try{
-    const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'setDeliveryPhoto',payload:{order_no,photo_url:photo}})});
+    const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'setDeliveryPhoto',payload:{order_no,photo_url:''}})});
     const d=await r.json();
     if(!d.success){toast('⚠️ '+(d.error||'ไม่สำเร็จ'));loadOnlineOrders();}
   }catch(e){toast('⚠️ เชื่อมต่อไม่ได้');loadOnlineOrders();}
