@@ -1219,9 +1219,58 @@ async function doUpdateStatus(order_no,new_status){
   }catch(e){toast('⚠️ เชื่อมต่อไม่ได้');loadOnlineOrders();}
 }
 
+function localConfirmOnlineOrder(o){
+  if(!o)return;
+  if(S.orders.some(x=>x.order_no===o.order_no))return; // ป้องกัน double-count
+  const items=Array.isArray(o.items)?o.items:[];
+  const tops=Array.isArray(o.toppings)?o.toppings:[];
+
+  // map flavor label → id
+  const flavors=items.map(it=>{
+    const lbl=it.label||it.flavor||'';
+    return S.iceTypes.find(t=>t.name===lbl)?.id;
+  }).filter(Boolean);
+
+  // find size config
+  const sizeId=items[0]?.size||'';
+  const sz=S.sizes.find(s=>s.id===sizeId||s.label===sizeId);
+
+  // deduct ice stock
+  if(sz&&flavors.length){
+    const spf=Math.round(sz.scoops/flavors.length);
+    flavors.forEach(fid=>{S.stock.ice[fid]=Math.max(0,(S.stock.ice[fid]||0)-spf);});
+  }
+
+  // map topping label → id + deduct stock
+  const toppingIds=[];
+  tops.forEach(t=>{
+    const lbl=t.label||t.name||'';
+    const match=S.topTypes.find(x=>x.name===lbl);
+    if(match){S.stock.top[match.id]=Math.max(0,(S.stock.top[match.id]||0)-1);toppingIds.push(match.id);}
+  });
+
+  // calc cost
+  let cost=0;
+  if(sz){
+    const spf=Math.round(sz.scoops/Math.max(1,flavors.length));
+    flavors.forEach(fid=>{const ic=S.iceTypes.find(t=>t.id===fid);if(ic)cost+=(ic.cost||0)*spf;});
+    toppingIds.forEach(tid=>{const tp=S.topTypes.find(t=>t.id===tid);if(tp)cost+=(tp.cost||0);});
+  }
+
+  const price=parseFloat(o.subtotal)||0;
+  const profit=Math.round(price-cost);
+  const _d=o.created_at?new Date(o.created_at.replace(' ','T')).toISOString():new Date().toISOString();
+
+  S.orders.push({type:'sale',size:sz?.label||sizeId,scoops:sz?.scoops||0,flavors,toppings:toppingIds,price,cost:Math.round(cost),profit,date:_d,order_no:o.order_no});
+  save();
+  renderHistory();renderSummary();renderStock();
+}
+
 async function doConfirmPayment(order_no){
+  const o=OL_cache.find(x=>x.order_no===order_no);
   const u=patchOrder(order_no,{payment_status:'PAID',order_status:'MAKING'});
   if(u&&OL_current?.order_no===order_no){OL_current=u;renderOrderDetail(u);}
+  localConfirmOnlineOrder(o);
   toast('✓ ยืนยันการชำระแล้ว');
   try{
     const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'confirmPayment',payload:{order_no}})});
