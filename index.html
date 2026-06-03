@@ -228,55 +228,18 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
     <div class="stat"><div class="stat-v" style="color:var(--muted)" id="s-cost">฿0</div><div class="stat-l">ต้นทุน</div></div>
     <div class="stat"><div class="stat-v" id="s-profit">฿0</div><div class="stat-l">กำไร</div></div>
   </div>
-  <div id="s-rev-breakdown" style="font-size:.72rem;color:var(--muted);text-align:center;margin-bottom:12px;display:none;"></div>
-  <div class="card" style="margin-bottom:16px;">
-    <div style="display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted);margin-bottom:5px;">
-      <span>Margin</span><span id="s-margin" style="font-weight:700;color:var(--text)">0%</span>
-    </div>
-    <div class="prog-bg"><div class="prog-fill" id="s-margin-bar" style="width:0%"></div></div>
-  </div>
-  <span class="sec">คืนทุน</span>
-  <div class="card" style="margin-bottom:16px;">
-    <div id="s-invest-detail" style="font-size:.82rem;color:var(--muted);margin-bottom:10px;line-height:1.7;"></div>
-    <div style="display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted);margin-bottom:5px;">
-      <span>คืนทุนแล้ว</span><span id="s-rec-label" style="font-weight:700;color:var(--text)">0%</span>
-    </div>
-    <div class="prog-bg" style="margin-bottom:10px;"><div class="prog-fill" id="s-rec-bar" style="width:0%"></div></div>
-    <div id="s-rec-msg"></div>
-  </div>
+  <div id="s-rev-breakdown" style="font-size:.72rem;color:var(--muted);text-align:center;margin-bottom:16px;display:none;"></div>
   <span class="sec">สถิติ</span>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
     <div class="stat"><div class="stat-v" id="s-orders">0</div><div class="stat-l">ออเดอร์</div></div>
-    <div class="stat"><div class="stat-v" id="s-avg">฿0</div><div class="stat-l">กำไร/ออเดอร์</div></div>
-    <div class="stat"><div class="stat-v" id="s-daily">฿0</div><div class="stat-l">กำไร/วัน</div></div>
-    <div class="stat"><div class="stat-v" id="s-monthly">฿0</div><div class="stat-l">คาด/เดือน</div></div>
+    <div class="stat"><div class="stat-v" id="s-monthly-rev">฿0</div><div class="stat-l">รายได้เดือนนี้</div></div>
+    <div class="stat"><div class="stat-v" id="s-monthly-profit">฿0</div><div class="stat-l">กำไรเดือนนี้</div></div>
   </div>
-  <span class="sec">สถานการณ์คืนทุน</span>
-  <div class="card" style="margin-bottom:12px;">
-    <table style="width:100%;font-size:.82rem;border-collapse:collapse;">
-      <tr style="font-size:.68rem;color:var(--muted);border-bottom:1px solid var(--warm);">
-        <th style="text-align:left;padding:0 0 8px">กรณี</th>
-        <th style="text-align:right;padding:0 0 8px">กำไร/วัน</th>
-        <th style="text-align:right;padding:0 0 8px">คืนทุนใน</th>
-      </tr>
-      <tr style="border-bottom:1px solid var(--warm);">
-        <td style="padding:8px 0;color:var(--muted)">แย่ (3 ถ้วย)</td>
-        <td style="text-align:right;color:var(--muted)">~฿100</td>
-        <td style="text-align:right;font-weight:700" id="sc-bad">—</td>
-      </tr>
-      <tr style="border-bottom:1px solid var(--warm);">
-        <td style="padding:8px 0;color:var(--muted)">ปกติ (5–7)</td>
-        <td style="text-align:right;color:var(--muted)">~฿200</td>
-        <td style="text-align:right;font-weight:700" id="sc-norm">—</td>
-      </tr>
-      <tr>
-        <td style="padding:8px 0;color:var(--muted)">ดี (10+)</td>
-        <td style="text-align:right;color:var(--muted)">~฿350</td>
-        <td style="text-align:right;font-weight:700;color:var(--green)" id="sc-good">—</td>
-      </tr>
-    </table>
+  <div class="card" id="s-size-breakdown" style="margin-bottom:12px;display:none;"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+    <div class="card" id="s-top-ice" style="display:none;"></div>
+    <div class="card" id="s-top-top" style="display:none;"></div>
   </div>
-  <div class="card" id="s-recommend"></div>
 </div>
 
 <!-- ONLINE ORDERS -->
@@ -567,15 +530,30 @@ async function syncHistoryFromSheets(){
 
     // merge PAID online orders ที่ยังไม่มีใน orders sheet
     const olRes=await fetch(GAS_URL+'?action=getOrders').then(r=>r.json()).catch(()=>({orders:[]}));
+    const paidOnline=(olRes.orders||[]).filter(o=>o.payment_status==='PAID');
     const knownNos=new Set(S.orders.filter(o=>o.order_no).map(o=>o.order_no));
-    (olRes.orders||[]).filter(o=>o.payment_status==='PAID'&&!knownNos.has(o.order_no)).forEach(o=>{
+    // ลบ records ที่ไม่มี order_no แต่ซ้ำกับ PAID online order (old pre-fix data in orders sheet)
+    S.orders=S.orders.filter(o=>{
+      if(o.order_no)return true;
+      const oTime=new Date(o.date).getTime();
+      return !paidOnline.some(oo=>Math.abs(new Date(gasDateToISO(String(oo.created_at||''))).getTime()-oTime)<2*60*1000&&(parseFloat(oo.subtotal)||0)===o.price);
+    });
+    paidOnline.filter(o=>!knownNos.has(o.order_no)).forEach(o=>{
       const items=Array.isArray(o.items)?o.items:(typeof o.items==='string'?JSON.parse(o.items):[]);
       const tops=Array.isArray(o.toppings)?o.toppings:(typeof o.toppings==='string'?JSON.parse(o.toppings):[]);
-      const flavors=items.map(it=>S.iceTypes.find(t=>t.name===(it.label||it.flavor||''))?.id).filter(Boolean);
+      const matchIceType=lbl=>S.iceTypes.find(t=>t.name===lbl||t.id===lbl);
+      const flavors=items.map(it=>matchIceType(it.label||it.flavor||it.name||'')?.id).filter(Boolean);
       const sz=S.sizes.find(s=>s.label===(items[0]?.size||'')||s.id===(items[0]?.size||''));
       const toppingIds=tops.map(t=>S.topTypes.find(x=>x.name===(t.label||t.name||''))?.id).filter(Boolean);
-      S.orders.push({type:'sale',size:sz?.label||items[0]?.size||'',flavors,toppings:toppingIds,price:parseFloat(o.subtotal)||0,cost:0,profit:parseFloat(o.subtotal)||0,date:gasDateToISO(String(o.created_at||'')),order_no:o.order_no,delivery_fee:parseFloat(o.delivery_fee)||0});
+      let cost=0;
+      if(sz){const spf=Math.round(sz.scoops/Math.max(1,flavors.length||1));flavors.forEach(fid=>{cost+=(S.costPerScoop[fid]||0)*spf;});}
+      toppingIds.forEach(tid=>{cost+=(S.costPerTop[tid]||0);});
+      const price=parseFloat(o.subtotal)||0;
+      S.orders.push({type:'sale',size:sz?.label||items[0]?.size||'',flavors,toppings:toppingIds,price,cost:Math.round(cost),profit:Math.round(price-cost),date:gasDateToISO(String(o.created_at||'')),order_no:o.order_no,delivery_fee:parseFloat(o.delivery_fee)||0});
     });
+    // dedup online orders — กัน race condition กรณี syncHistoryFromSheets ถูกเรียกซ้อน
+    const seenNos=new Set();
+    S.orders=S.orders.filter(o=>{if(!o.order_no)return true;if(seenNos.has(o.order_no))return false;seenNos.add(o.order_no);return true;});
     S.orders.sort((a,b)=>new Date(a.date)-new Date(b.date));
 
     // คำนวณ stock ใหม่จาก purchases + orders (ไม่ใช้ config snapshot)
@@ -1087,43 +1065,88 @@ el('btn-export').onclick=function(){
   if(typeof XLSX==='undefined'){toast('⚠️ กำลังโหลด SheetJS...');return;}
   const wb=XLSX.utils.book_new();
   const sales=S.orders.filter(o=>o.type==='sale');
-  // sheet 1: sales
-  const r1=[['วันที่','เวลา','ขนาด','รส','ท็อปปิ้ง','ราคา','ต้นทุน','กำไร']];
+  const eats=S.orders.filter(o=>o.type==='eat');
+  const fmtD=d=>d.toLocaleDateString('th-TH');
+  const fmtT=d=>d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+  const iceName=id=>S.iceTypes.find(t=>t.id===id)?.name||id;
+  const topName=id=>S.topTypes.find(t=>t.id===id)?.name||id;
+
+  // sheet 1: รายรับ (หน้าร้าน + Delivery รวม)
+  const r1=[['วันที่','เวลา','ช่องทาง','เลขออเดอร์','ขนาด','รส','ท็อปปิ้ง','ราคาสินค้า','ค่าส่ง','ต้นทุน','กำไร']];
   sales.forEach(o=>{
     const d=new Date(o.date);
-    r1.push([d.toLocaleDateString('th-TH'),d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}),o.size,
-      o.flavors.map(f=>S.iceTypes.find(t=>t.id===f)?.name||f).join(', '),
-      o.toppings.map(t=>S.topTypes.find(x=>x.id===t)?.name||t).join(', ')||'-',
-      o.price,o.cost,o.profit]);
+    const isDlv=!!o.order_no;
+    r1.push([fmtD(d),fmtT(d),isDlv?'Delivery':'หน้าร้าน',o.order_no||'',o.size,
+      (o.flavors||[]).map(iceName).join(', '),
+      (o.toppings||[]).map(topName).join(', ')||'-',
+      o.price,o.delivery_fee||0,o.cost,o.profit]);
   });
-  if(sales.length){const tr=sales.reduce((a,o)=>({p:a.p+o.price,c:a.c+o.cost,g:a.g+o.profit}),{p:0,c:0,g:0});r1.push([]);r1.push(['รวม','','','','',tr.p,tr.c,tr.g]);}
-  const ws1=XLSX.utils.aoa_to_sheet(r1);ws1['!cols']=[{wch:12},{wch:8},{wch:5},{wch:22},{wch:20},{wch:8},{wch:8},{wch:8}];
-  XLSX.utils.book_append_sheet(wb,ws1,'รายการขาย');
-  // sheet 2: eat
-  const eats=S.orders.filter(o=>o.type==='eat');
+  if(sales.length){
+    const t=sales.reduce((a,o)=>({p:a.p+o.price,df:a.df+(o.delivery_fee||0),c:a.c+o.cost,g:a.g+o.profit}),{p:0,df:0,c:0,g:0});
+    r1.push([]);r1.push(['รวม','','','','','','',t.p,t.df,t.c,t.g]);
+  }
+  const ws1=XLSX.utils.aoa_to_sheet(r1);
+  ws1['!cols']=[{wch:12},{wch:8},{wch:10},{wch:12},{wch:5},{wch:22},{wch:20},{wch:12},{wch:8},{wch:8},{wch:8}];
+  XLSX.utils.book_append_sheet(wb,ws1,'รายรับ');
+
+  // sheet 2: กินเอง
   const r2=[['วันที่','เวลา','รายการ']];
   eats.forEach(o=>{
     const d=new Date(o.date);
-    const parts=[...Object.entries(o.ice||{}).map(([id,n])=>(S.iceTypes.find(x=>x.id===id)?.name||id)+' '+n+'สกู๊ป'),...Object.entries(o.top||{}).map(([id,n])=>(S.topTypes.find(x=>x.id===id)?.name||id)+' '+n+'เสิร์ฟ')];
-    r2.push([d.toLocaleDateString('th-TH'),d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}),parts.join(', ')]);
+    const parts=[...Object.entries(o.ice||{}).map(([id,n])=>iceName(id)+' '+n+'สกู๊ป'),...Object.entries(o.top||{}).map(([id,n])=>topName(id)+' '+n+'เสิร์ฟ')];
+    r2.push([fmtD(d),fmtT(d),parts.join(', ')]);
   });
   const ws2=XLSX.utils.aoa_to_sheet(r2);ws2['!cols']=[{wch:12},{wch:8},{wch:40}];
   XLSX.utils.book_append_sheet(wb,ws2,'กินเอง');
-  // sheet 3: purchases
-  const r3=[['วันที่','ประเภท','ชื่อ','จำนวน','ราคา']];
-  S.purchases.forEach(p=>{const d=new Date(p.date);r3.push([d.toLocaleDateString('th-TH'),p.type==='ice'?'ไอศกรีม':'ท็อปปิ้ง',p.name,p.qty,p.price]);});
-  r3.push([]);r3.push(['รวม','','','',S.purchases.reduce((a,p)=>a+p.price,0)]);
+
+  // sheet 3: รายจ่าย (ซื้อวัตถุดิบ)
+  const r3=[['วันที่','ประเภท','สินค้า','จำนวน','ราคา']];
+  [...S.purchases].sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(p=>{
+    const d=new Date(p.date);
+    r3.push([fmtD(d),p.type==='ice'?'ไอศกรีม':'ท็อปปิ้ง',p.name,p.qty,p.price]);
+  });
+  if(S.purchases.length){r3.push([]);r3.push(['รวม','','','',S.purchases.reduce((a,p)=>a+p.price,0)]);}
   const ws3=XLSX.utils.aoa_to_sheet(r3);ws3['!cols']=[{wch:12},{wch:10},{wch:20},{wch:10},{wch:10}];
-  XLSX.utils.book_append_sheet(wb,ws3,'ซื้อสต็อก');
-  // sheet 4: daily summary
+  XLSX.utils.book_append_sheet(wb,ws3,'รายจ่าย');
+
+  // sheet 4: สรุปรายวัน
   const byDay={};
-  sales.forEach(o=>{const d=o.date.slice(0,10);if(!byDay[d])byDay[d]={n:0,r:0,c:0,p:0};byDay[d].n++;byDay[d].r+=o.price;byDay[d].c+=o.cost;byDay[d].p+=o.profit;});
-  const r4=[['วันที่','ออเดอร์','รายได้','ต้นทุน','กำไร']];
-  Object.entries(byDay).sort().forEach(([day,v])=>{r4.push([new Date(day).toLocaleDateString('th-TH'),v.n,v.r,v.c,v.p]);});
-  const ws4=XLSX.utils.aoa_to_sheet(r4);ws4['!cols']=[{wch:14},{wch:8},{wch:10},{wch:10},{wch:10}];
+  const ensureDay=d=>{if(!byDay[d])byDay[d]={n:0,walk:0,dlvProd:0,dlvFee:0,cost:0,profit:0,expense:0};};
+  sales.forEach(o=>{
+    const d=o.date.slice(0,10);ensureDay(d);byDay[d].n++;
+    if(o.order_no){byDay[d].dlvProd+=o.price;byDay[d].dlvFee+=o.delivery_fee||0;}
+    else{byDay[d].walk+=o.price;}
+    byDay[d].cost+=o.cost;byDay[d].profit+=o.profit;
+  });
+  S.purchases.forEach(p=>{const d=p.date.slice(0,10);ensureDay(d);byDay[d].expense+=p.price;});
+  const r4=[['วันที่','ออเดอร์','หน้าร้าน','Delivery (สินค้า)','ค่าส่ง','รายรับรวม','ต้นทุน','กำไรขั้นต้น','ซื้อวัตถุดิบ']];
+  Object.entries(byDay).sort().forEach(([day,v])=>{
+    r4.push([new Date(day).toLocaleDateString('th-TH'),v.n,v.walk,v.dlvProd,v.dlvFee,v.walk+v.dlvProd+v.dlvFee,v.cost,v.profit,v.expense]);
+  });
+  const ws4=XLSX.utils.aoa_to_sheet(r4);
+  ws4['!cols']=[{wch:14},{wch:8},{wch:12},{wch:16},{wch:8},{wch:12},{wch:10},{wch:14},{wch:12}];
   XLSX.utils.book_append_sheet(wb,ws4,'สรุปรายวัน');
-  XLSX.writeFile(wb,'IcePOS_'+new Date().toLocaleDateString('th-TH').replace(/\//g,'-')+'.xlsx');
-  toast('📊 Export แล้ว!');
+
+  // sheet 5: สรุปรายเดือน
+  const byMonth={};
+  const ensureMo=m=>{if(!byMonth[m])byMonth[m]={n:0,revenue:0,cost:0,profit:0,expense:0};};
+  sales.forEach(o=>{
+    const m=o.date.slice(0,7);ensureMo(m);byMonth[m].n++;
+    byMonth[m].revenue+=o.price+(o.delivery_fee||0);
+    byMonth[m].cost+=o.cost;byMonth[m].profit+=o.profit;
+  });
+  S.purchases.forEach(p=>{const m=p.date.slice(0,7);ensureMo(m);byMonth[m].expense+=p.price;});
+  const r5=[['เดือน','ออเดอร์','รายรับรวม','ต้นทุนสินค้า','กำไรขั้นต้น','ซื้อวัตถุดิบ']];
+  Object.entries(byMonth).sort().forEach(([m,v])=>{
+    const label=new Date(m+'-02').toLocaleDateString('th-TH',{year:'numeric',month:'long'});
+    r5.push([label,v.n,v.revenue,v.cost,v.profit,v.expense]);
+  });
+  const ws5=XLSX.utils.aoa_to_sheet(r5);
+  ws5['!cols']=[{wch:16},{wch:8},{wch:12},{wch:14},{wch:14},{wch:14}];
+  XLSX.utils.book_append_sheet(wb,ws5,'สรุปรายเดือน');
+
+  XLSX.writeFile(wb,'IcePOS_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  toast('📊 Export สำเร็จ!');
 };
 
 // ============================================================
@@ -1133,42 +1156,56 @@ function renderSummary(){
   const sales=S.orders.filter(o=>o.type==='sale');
   const productRev=sales.reduce((a,o)=>a+o.price,0);
   const deliveryRev=sales.reduce((a,o)=>a+(o.delivery_fee||0),0);
-  const rev=productRev+deliveryRev;
   const cost=sales.reduce((a,o)=>a+o.cost,0);
-  const profit=sales.reduce((a,o)=>a+o.profit,0)+deliveryRev;
-  const margin=rev>0?Math.round(profit/rev*100):0;
-  const inv=S.totalInvested;
-  const recPct=inv>0?Math.min(100,Math.round(profit/inv*100)):0;
-  const left=Math.max(0,inv-profit);
-  const days=[...new Set(sales.map(o=>o.date.slice(0,10)))].length||1;
-  const dailyAvg=Math.round(profit/days);
+  const profit=sales.reduce((a,o)=>a+o.profit,0);
 
-  el('s-revenue').textContent='฿'+rev.toLocaleString();
-  if(deliveryRev>0){el('s-rev-breakdown').textContent='จากขาย ฿'+productRev.toLocaleString()+' · ค่าส่ง ฿'+deliveryRev.toLocaleString();el('s-rev-breakdown').style.display='block';}
+  const nowMonth=new Date().toISOString().slice(0,7);
+  const mSales=sales.filter(o=>o.date.slice(0,7)===nowMonth);
+  const mRev=mSales.reduce((a,o)=>a+o.price,0);
+  const mProfit=mSales.reduce((a,o)=>a+o.profit,0);
+
+  const sizeCount={};
+  sales.forEach(o=>{if(o.size)sizeCount[o.size]=(sizeCount[o.size]||0)+1;});
+
+  el('s-revenue').textContent='฿'+productRev.toLocaleString();
+  if(deliveryRev>0){el('s-rev-breakdown').textContent='ค่าส่ง = ฿'+deliveryRev.toLocaleString();el('s-rev-breakdown').style.display='block';}
   else{el('s-rev-breakdown').style.display='none';}
   el('s-cost').textContent='฿'+cost.toLocaleString();
   el('s-profit').textContent='฿'+profit.toLocaleString();
   el('s-profit').style.color=profit>=0?'var(--green)':'var(--red)';
-  el('s-margin').textContent=margin+'%';
-  el('s-margin-bar').style.width=Math.min(100,Math.max(0,margin))+'%';
-  el('s-invest-detail').innerHTML='ลงทุนไป <b>฿'+inv.toLocaleString()+'</b> · กำไรสะสม <b style="color:var(--green)">฿'+profit.toLocaleString()+'</b> · ต้องกำไรอีก <b>฿'+left.toLocaleString()+'</b>';
-  el('s-rec-label').textContent=recPct+'%';
-  el('s-rec-bar').style.width=Math.min(100,Math.max(0,recPct))+'%';
-  el('s-rec-bar').style.background=recPct>=100?'var(--green)':recPct>=50?'#e07b39':'var(--brown)';
-  el('s-rec-msg').innerHTML=recPct>=100?'<div class="alert-green">🎉 คืนทุนแล้ว! กำไรแท้จริง ฿'+(profit-inv).toLocaleString()+'</div>':'<div style="font-size:.82rem;color:var(--muted)">ต้องกำไรอีก ฿'+left.toLocaleString()+' จึงจะคืนทุน</div>';
   el('s-orders').textContent=sales.length;
-  el('s-avg').textContent='฿'+(sales.length?Math.round(profit/sales.length):0);
-  el('s-daily').textContent='฿'+dailyAvg.toLocaleString();
-  el('s-monthly').textContent='฿'+(dailyAvg*30).toLocaleString();
-  el('sc-bad').textContent=left>0?Math.ceil(left/100)+' วัน':'✓';
-  el('sc-norm').textContent=left>0?Math.ceil(left/200)+' วัน':'✓';
-  el('sc-good').textContent=left>0?Math.ceil(left/350)+' วัน':'✓';
-  let rec='';
-  if(!sales.length)rec='<p style="font-size:.82rem;color:var(--muted)">เริ่มบันทึกการขายเพื่อดูการวิเคราะห์</p>';
-  else if(recPct>=100)rec='<p style="font-size:.85rem;font-weight:600;color:var(--green)">🏆 คืนทุนแล้ว!</p>';
-  else if(dailyAvg>0)rec='<p style="font-size:.68rem;font-weight:700;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em">คำแนะนำ</p><p style="font-size:.85rem;color:var(--text)">กำไรเฉลี่ย <b>฿'+dailyAvg+'/วัน</b> · จะคืนทุนใน <b>~'+Math.ceil(left/dailyAvg)+' วัน</b></p>';
-  else rec='<p style="font-size:.85rem;color:var(--red)">ยังขาดทุน — ตรวจสอบต้นทุน</p>';
-  el('s-recommend').innerHTML=rec;
+  el('s-monthly-rev').textContent='฿'+mRev.toLocaleString();
+  el('s-monthly-profit').textContent='฿'+mProfit.toLocaleString();
+  el('s-monthly-profit').style.color=mProfit>=0?'var(--green)':'var(--red)';
+
+  const sizeEntries=Object.entries(sizeCount).sort((a,b)=>b[1]-a[1]);
+  if(sizeEntries.length){
+    const rows=sizeEntries.map(([sz,n])=>`<div style="display:flex;justify-content:space-between;font-size:.88rem;padding:5px 0;border-bottom:1px solid var(--warm);"><span style="color:var(--muted)">${sz}</span><span style="font-weight:700">${n} ถ้วย</span></div>`).join('');
+    el('s-size-breakdown').innerHTML='<div style="font-size:.72rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">ไซส์ที่ขาย</div>'+rows;
+    el('s-size-breakdown').style.display='block';
+  }else{el('s-size-breakdown').style.display='none';}
+
+  // top 3 ไอติม
+  const iceCount={};
+  sales.forEach(o=>(o.flavors||[]).forEach(fid=>{iceCount[fid]=(iceCount[fid]||0)+1;}));
+  const iceTop=Object.entries(iceCount).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  if(iceTop.length){
+    const medals=['🥇','🥈','🥉'];
+    const rows=iceTop.map(([fid,n],i)=>{const t=S.iceTypes.find(x=>x.id===fid);return`<div style="display:flex;justify-content:space-between;align-items:center;font-size:.82rem;padding:4px 0;"><span>${medals[i]} ${t?t.name:fid}</span><span style="font-weight:700;color:var(--brown-d)">${n}</span></div>`;}).join('');
+    el('s-top-ice').innerHTML='<div style="font-size:.68rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">🍦 ไอติม</div>'+rows;
+    el('s-top-ice').style.display='block';
+  }else{el('s-top-ice').style.display='none';}
+
+  // top 3 topping
+  const topCount={};
+  sales.forEach(o=>(o.toppings||[]).forEach(tid=>{topCount[tid]=(topCount[tid]||0)+1;}));
+  const topTop=Object.entries(topCount).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  if(topTop.length){
+    const medals=['🥇','🥈','🥉'];
+    const rows2=topTop.map(([tid,n],i)=>{const t=S.topTypes.find(x=>x.id===tid);return`<div style="display:flex;justify-content:space-between;align-items:center;font-size:.82rem;padding:4px 0;"><span>${medals[i]} ${t?t.name:tid}</span><span style="font-weight:700;color:var(--brown-d)">${n}</span></div>`;}).join('');
+    el('s-top-top').innerHTML='<div style="font-size:.68rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">🍮 ท็อปปิ้ง</div>'+rows2;
+    el('s-top-top').style.display='block';
+  }else{el('s-top-top').style.display='none';}
 }
 
 // ============================================================
@@ -1353,8 +1390,8 @@ function localConfirmOnlineOrder(o){
   let cost=0;
   if(sz){
     const spf=Math.round(sz.scoops/Math.max(1,flavors.length));
-    flavors.forEach(fid=>{const ic=S.iceTypes.find(t=>t.id===fid);if(ic)cost+=(ic.cost||0)*spf;});
-    toppingIds.forEach(tid=>{const tp=S.topTypes.find(t=>t.id===tid);if(tp)cost+=(tp.cost||0);});
+    flavors.forEach(fid=>{cost+=(S.costPerScoop[fid]||0)*spf;});
+    toppingIds.forEach(tid=>{cost+=(S.costPerTop[tid]||0);});
   }
 
   const price=parseFloat(o.subtotal)||0;
@@ -1364,7 +1401,6 @@ function localConfirmOnlineOrder(o){
   const delivery_fee=parseFloat(o.delivery_fee)||0;
   S.orders.push({type:'sale',size:sz?.label||sizeId,scoops:sz?.scoops||0,flavors,toppings:toppingIds,price,cost:Math.round(cost),profit,date:_d,order_no:o.order_no,delivery_fee});
   save();
-  syncToSheets({type:'sale',date:_d,size:sz?.label||sizeId,flavors,toppings:toppingIds,price,cost:Math.round(cost),profit});
   syncStockToSheets();
   renderHistory();renderSummary();renderStock();
 }
